@@ -23,7 +23,7 @@ if "page" not in st.session_state:
 
 # ---------- Sidebar ----------
 with st.sidebar:
-    st.image("assets/app_icon.png", width=100)
+    st.image("Assets/app_icon.png", width=100)
     st.markdown("### Menu")
 
     if st.button("📝 Application Extractor"):
