@@ -9,10 +9,12 @@ from multi_file_handler import handle_files
 from utils.Excel_analyzer import analyze_excel
 import asyncio
 import time
+import zipfile
+import io
 
 # Load Gemini API key
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+genai.configure(api_key=os.getenv("gemini_keys"))
 
 # ---------- Page Config ----------
 st.set_page_config(page_title="Urdu Police App & Excel Analyzer", layout="wide")
@@ -111,7 +113,7 @@ if st.session_state.page == "app":
                 "From this handwritten Urdu police application image, extract ONLY the following fields. "
                 "Translate the content into English if needed and follow fields Example stricly and return Plain Text only\n\n"
                 "Fields Example:\n"
-                """Name: Furqan Ur Rehman
+                """Name: Furqan Ur Rehman (only applicant name)
                 Phone Number: 0313-0282098 (Mention in Last)
                 IMEI Number: 354882089097706 354882089094534
                 last Num Used: 0313-0282044 or None
@@ -163,31 +165,42 @@ if st.session_state.page == "app":
 # -------------------- Excel Analyzer --------------------
 elif st.session_state.page == "analyzer":
     st.title("📈 Excel Analyzer")
-    st.info("Upload an Excel file to analyze Mobile Numbers & Addresses.")
+    st.info("Upload multiple Excel/CSV files to analyze Mobile Numbers & Addresses.")
 
-    uploaded_excel = st.file_uploader("Upload Excel file", type=["xlsx","csv"], key="analyzer_uploader")
+    uploaded_files = st.file_uploader(
+        "Upload Excel/CSV files",
+        type=["xlsx", "csv"],
+        accept_multiple_files=True,
+        key="analyzer_uploader"
+    )
 
-    if uploaded_excel:
-        temp_path = os.path.join("temp_uploads", uploaded_excel.name)
+    if uploaded_files:
         os.makedirs("temp_uploads", exist_ok=True)
-        with open(temp_path, "wb") as f:
-            f.write(uploaded_excel.getbuffer())
+        zip_buffer = io.BytesIO()
 
-        try:
-            st.write("⏳ Thora intezaar karein... Aapki file par kaam ho raha hai. Shukriya 😊")
+        with zipfile.ZipFile(zip_buffer, "w") as zipf:
+            for uploaded_file in uploaded_files:
+                temp_path = os.path.join("temp_uploads", uploaded_file.name)
+                with open(temp_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
 
-            analyzed_path = analyze_excel(temp_path)
-            st.success("✅ Excel analyzed successfully!")
-            download_file_name = uploaded_excel.name
-            with open(analyzed_path, "rb") as f:
-                st.download_button(
-                    label="📥 Download Analyzed Excel",
-                    data=f,
-                    file_name="(Analized)-"+download_file_name,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+                try:
+                    st.write(f"⏳ Processing file: **{uploaded_file.name}** ...")
+                    analyzed_path = analyze_excel(temp_path)
+                    st.success(f"✅ {uploaded_file.name} analyzed successfully!")
+
+                    zipf.write(analyzed_path, arcname="(Analyzed)-" + uploaded_file.name)
+                except Exception as e:
+                    st.error(f"❌ Error in {uploaded_file.name}: {str(e)}")
+
+        # Final zip download
+        zip_buffer.seek(0)
+        st.download_button(
+            label="📦 Download All Analyzed Files (ZIP)",
+            data=zip_buffer,
+            file_name="Analyzed_Files.zip",
+            mime="application/zip"
+        )
 
 # -------------------- Settings / Future Tools --------------------
 elif st.session_state.page == "settings":
