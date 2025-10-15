@@ -165,7 +165,7 @@ elif st.session_state.page == "analyzer":
     st.title("📈 Excel Analyzer")
     st.info("Upload an Excel file to analyze Mobile Numbers & Addresses.")
 
-    uploaded_excel = st.file_uploader("Upload Excel file", type=["xlsx"], key="analyzer_uploader")
+    uploaded_excel = st.file_uploader("Upload Excel file", type=["xlsx","csv"], key="analyzer_uploader")
 
     if uploaded_excel:
         temp_path = os.path.join("temp_uploads", uploaded_excel.name)
@@ -178,12 +178,12 @@ elif st.session_state.page == "analyzer":
 
             analyzed_path = analyze_excel(temp_path)
             st.success("✅ Excel analyzed successfully!")
-
+            download_file_name = uploaded_excel.name
             with open(analyzed_path, "rb") as f:
                 st.download_button(
                     label="📥 Download Analyzed Excel",
                     data=f,
-                    file_name="analyzed_excel.xlsx",
+                    file_name="(Analized)-"+download_file_name,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
         except Exception as e:

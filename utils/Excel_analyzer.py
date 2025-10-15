@@ -16,7 +16,15 @@ def analyze_excel(file_path):
     """
 
     # -------------------- Read Excel --------------------
-    df = read_excel_auto(file_path)
+    file_ext = os.path.splitext(file_path)[1].lower()
+    if file_ext == ".csv":
+        df = pd.read_csv(file_path)
+        # Save temporary Excel version for uniform processing
+        temp_excel_path = os.path.splitext(file_path)[0] + "_converted.xlsx"
+        df.to_excel(temp_excel_path, index=False)
+        file_path = temp_excel_path
+    else:
+        df = read_excel_auto(file_path)
 
     # -------------------- Identify A & B Number Columns --------------------
     possible_a_cols = ["A Number", "ANUMBER", "a number", "A party", "A_party" , "Aparty"]
