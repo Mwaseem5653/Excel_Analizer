@@ -11,6 +11,7 @@ import asyncio
 import time
 import zipfile
 import io
+import pandas as pd # Added for DataFrame handling
 
 # Load Gemini API key
 load_dotenv()
@@ -32,10 +33,13 @@ with st.sidebar:
         st.session_state.page = "app"
     if st.button("📈 Excel Analyzer"):
         st.session_state.page = "analyzer"
+    if st.button("PTA Services"):
+        st.session_state.page = "pta_services"
     if st.button("⚙️ Settings / Future Tools"):
         st.session_state.page = "settings"
 
-# ---------- Rate Limiting Setup ----------
+# ---------- Page Logic ----------
+
 REQUEST_LIMIT = 10   # max 10 requests
 TIME_WINDOW = 60     # in seconds (1 min)
 request_times = []   # store timestamps of last requests
@@ -201,6 +205,88 @@ elif st.session_state.page == "analyzer":
             file_name="Analyzed_Files.zip",
             mime="application/zip"
         )
+
+elif st.session_state.page == "pta_services":
+    st.title("PTA Services - Operator Lookup and Sorted Export")
+
+    st.subheader("Enter Phone Numbers for Lookup and Sorting")
+    phone_numbers_input = st.text_area("Enter phone numbers, one per line:", key="phone_numbers_input_single_section")
+
+    if st.button("Process Numbers for Operators and Sorted Export", key="process_numbers_button"):
+        if phone_numbers_input:
+            from utils.operator_lookup import find_operators_and_download
+            
+            phone_numbers = [num.strip() for num in phone_numbers_input.split('\n') if num.strip()]
+            
+            if phone_numbers:
+                try:
+                    # Perform operator lookup
+                    # The original find_operators_and_download also saves to Excel, which is fine, but we'll sort here.
+                    excel_path_dummy, lookup_results_data = find_operators_and_download(phone_numbers) 
+                    
+                    st.subheader("Processing Results")
+                    
+                    # Group results by operator
+                    operator_groups = {
+                        "Jazz Pakistan": [],
+                        "Zong Pakistan": [],
+                        "Telenor Pakistan": [],
+                        "Ufone Pakistan": [],
+                        "Other": []
+                    }
+                    
+                    for item in lookup_results_data:
+                        operator = item["operator"]
+                        if operator in operator_groups:
+                            operator_groups[operator].append(item)
+                        else:
+                            operator_groups["Other"].append(item)
+                    
+                    # Create a flat list of sorted results
+                    sorted_results_list = []
+                    for op_name in ["Jazz Pakistan", "Zong Pakistan", "Telenor Pakistan", "Ufone Pakistan", "Other"]:
+                        sorted_results_list.extend(operator_groups[op_name])
+
+                    # Standardize phone numbers to 92... format
+                    standardized_results = []
+                    for item in sorted_results_list:
+                        number = item["number"]
+                        # Apply '0' to '92' conversion for 11-digit numbers starting with '0'
+                        if len(number) == 11 and number.startswith('0'):
+                            standardized_number = '92' + number[1:]
+                        else:
+                            standardized_number = number # Keep as is if not matching criteria
+                        standardized_results.append({
+                            "Phone Number": standardized_number,
+                            "Detected Operator": item["operator"]
+                        })
+
+                    # Convert to DataFrame for display and export
+                    df_final_results = pd.DataFrame(standardized_results)
+                    st.dataframe(df_final_results)
+
+                    # Prepare Excel for download
+                    excel_buffer = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                        df_final_results.to_excel(writer, index=False, sheet_name='Sorted_Operator_Results')
+                    excel_buffer.seek(0)
+
+                    st.download_button(
+                        label=f"📥 Download Sorted Operator Results (Excel)",
+                        data=excel_buffer,
+                        file_name="sorted_operator_results.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_sorted_operator_results"
+                    )
+
+                except Exception as e:
+                    st.error(f"An error occurred during processing: {e}")
+            else:
+                st.warning("Please enter at least one valid phone number.")
+        else:
+            st.warning("Please enter phone numbers to process.")
+
+
 
 # -------------------- Settings / Future Tools --------------------
 elif st.session_state.page == "settings":
