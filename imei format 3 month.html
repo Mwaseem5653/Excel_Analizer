@@ -1,0 +1,136 @@
+<html>
+<head>
+</head>
+<body>
+<table height="100%" width="100%" border="0">
+<tr>
+<td  width="22%" valign="top"><textarea cols="30" rows="30" id="formatinput">
+</textarea>
+</td>
+
+
+<td width="10%" ><input type="button" value="Change Format"  onclick="changeFormat()"></td>
+
+
+<td width="69%" id="formatoutput" valign="top"></td>
+</tr>
+</table>
+
+
+<script type="text/javascript">
+
+function changeFormat(){
+//Clearing output Screen
+document.getElementById("formatoutput").innerHTML="";
+
+//getting input from textarea
+str1=document.getElementById("formatinput").value;
+
+//removing spaces
+str1=str1.replaceAll(/\s/g,'');
+
+
+//slpitting IMEIs in array index
+IMEIArray=str1.match(/.{15}/g);
+
+
+//printing number of IMEIs 
+document.getElementById("formatoutput").innerHTML="Total IMEIs "+IMEIArray.length+"<br/><br/>";
+
+
+//printing IMEIs Array
+for(i=0;i<IMEIArray.length;i++)
+{
+document.getElementById("formatoutput").innerHTML+=IMEIArray[i]+"<br/>";
+}
+
+//current Date format
+var date = new Date();
+day=(date.getDate()).toString().padStart(2, '0');
+month=(1 + date.getMonth()).toString().padStart(2, '0');
+year=date.getFullYear();
+
+currDateSlashFormat=day + '/' +month+ '/' + year;
+currDateMinusFormat=day + '-' +month+ '-' + year;
+currDateUfoneFormat=month + '/' +day+ '/' + year;
+
+//---------------------
+
+
+
+//85 Days difference Date
+
+var priorDate = new Date(new Date().setDate(date.getDate()-85));
+
+pDay=(priorDate.getDate()).toString().padStart(2, '0');
+pMonth=(1 + priorDate.getMonth()).toString().padStart(2, '0');
+pYear=priorDate.getFullYear();
+
+priorDateSlashFormat=pDay + '/' +pMonth+ '/' + pYear;
+priorDateMinusFormat=pDay + '-' +pMonth+ '-' + pYear;
+priorDateUfoneFormat=pMonth + '/' +pDay+ '/' + pYear;
+
+
+//
+document.getElementById("formatoutput").innerHTML+="<br/><br/>";
+document.getElementById("formatoutput").innerHTML+="TPI:"
+
+for(i=0;i<IMEIArray.length;i++)
+{
+if(i==IMEIArray.length-1)
+{document.getElementById("formatoutput").innerHTML+=IMEIArray[i].slice(0, -1)+":";}
+else{
+document.getElementById("formatoutput").innerHTML+=IMEIArray[i].slice(0, -1)+",";
+}
+}
+
+document.getElementById("formatoutput").innerHTML+=priorDateMinusFormat+":"+currDateMinusFormat+":";
+
+
+document.getElementById("formatoutput").innerHTML+="<br/><br/><br/>";
+
+for(i=0;i<IMEIArray.length;i++)
+{
+document.getElementById("formatoutput").innerHTML+="I;"+IMEIArray[i].slice(0, -1)+";"+priorDateSlashFormat+";"+
+currDateSlashFormat+";<br/>";
+}
+
+
+document.getElementById("formatoutput").innerHTML+="<br/><br/><br/>";
+
+
+document.getElementById("formatoutput").innerHTML+="PERIOD FROM "+priorDateSlashFormat+" TO DATE. "
+//-------------------------------
+
+for(i=0;i<IMEIArray.length;i++)
+{
+
+if(i==IMEIArray.length-1)
+{document.getElementById("formatoutput").innerHTML+=IMEIArray[i]+" ";}
+else{
+document.getElementById("formatoutput").innerHTML+=IMEIArray[i]+",";
+}
+
+}
+
+
+document.getElementById("formatoutput").innerHTML+="<br/><br/><br/>";
+
+
+document.getElementById("formatoutput").innerHTML+="IMEI|Both|"+priorDateUfoneFormat+"|"+currDateUfoneFormat+"|";
+
+for(i=0;i<IMEIArray.length;i++)
+{
+document.getElementById("formatoutput").innerHTML+=IMEIArray[i]+":";
+}
+
+
+//-------------------------------
+
+
+}
+
+</script>
+
+</body>
+</html>

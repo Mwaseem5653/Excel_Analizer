@@ -15,7 +15,7 @@ import pandas as pd # Added for DataFrame handling
 
 # Load Gemini API key
 load_dotenv()
-genai.configure(api_key=st.secrets["GENAI_API_KEY"])
+genai.configure(api_key=os.getenv("GENAI_API_KEY"))
 
 # ---------- Page Config ----------
 st.set_page_config(page_title="Urdu Police App & Excel Analyzer", layout="wide")
@@ -315,6 +315,8 @@ elif st.session_state.page == "cdr_format":
         "Ufone Multi CDR HTML": {"file": "ufone 2 or more cdr 1 year.html", "operator_key": "Ufone Pakistan"},
         "Ufone Single CDR HTML": {"file": "ufone single cdr 1 year.html", "operator_key": "Ufone Pakistan"},
         "Zong CDR HTML": {"file": "zong cdr 6 MONTH.html", "operator_key": "Zong Pakistan"},
+        "IMEI Format 3 Month HTML": {"file": "imei format 3 month.html", "operator_key": "All Operators"},
+        "IMEI Format 6 Month HTML": {"file": "imei format 6 month.html", "operator_key": "All Operators"},
     }
     
     cols = st.columns(len(html_files_to_process))
