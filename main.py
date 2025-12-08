@@ -15,7 +15,7 @@ import pandas as pd # Added for DataFrame handling
 
 # Load Gemini API key
 load_dotenv()
-genai.configure(api_key=os.getenv("GENAI_API_KEY"))
+genai.configure(api_key=st.secrets["GENAI_API_KEY"])
 
 # ---------- Page Config ----------
 st.set_page_config(page_title="Urdu Police App & Excel Analyzer", layout="wide")
