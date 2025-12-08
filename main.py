@@ -134,7 +134,7 @@ if st.session_state.page == "app":
             # ✅ Apply Rate Limit before every request
             check_rate_limit()
 
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-2.5-flash")
 
             try:
                 response = model.generate_content(
