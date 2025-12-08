@@ -204,3 +204,4 @@ xlsxwriter==3.2.9
 yarg==0.1.10
 yarl==1.20.0
 zipp==3.21.0
+

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>CDR Formatter</title>
+</head>
+<body>
+<table height="100%" width="100%" border="0">
+<tr>
+<td  width="22%" valign="top"><textarea cols="30" rows="30" id="formatinput">
+</textarea>
+</td>
+
+<td width="10%">
+<input type="button" value="Change Format" onclick="changeFormat()">
+</td>
+
+<td width="69%" id="formatoutput" valign="top"></td>
+</tr>
+</table>
+
+<script type="text/javascript">
+
+function changeFormat() {
+
+    // Clear previous output
+    document.getElementById("formatoutput").innerHTML = "";
+
+    // Read input
+    let str1 = document.getElementById("formatinput").value.trim();
+
+    // Split each line → treat each line as one number
+    let IMEIArray = str1
+        .split(/\n+/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+    // If no numbers, do nothing
+    if (IMEIArray.length === 0) {
+        return; // blank output
+    }
+
+    // Remove 92 prefix where needed
+    IMEIArray = IMEIArray.map(num => {
+        if (num.startsWith("92")) {
+            return num.substring(2);
+        }
+        return num;
+    });
+
+    // Print total CDRs
+    document.getElementById("formatoutput").innerHTML =
+        "Total CDRs manufacture by choudhary M Naeem " + IMEIArray.length + "<br/><br/>";
+
+    // Print numbers line by line
+    IMEIArray.forEach(n => {
+        document.getElementById("formatoutput").innerHTML += n + "<br/>";
+    });
+
+    // Current date
+    var date = new Date();
+    let day = String(date.getDate()).padStart(2, '0');
+    let month = String(date.getMonth() + 1).padStart(2, '0');
+    let year = date.getFullYear();
+
+    // 180 days previous date
+    var priorDate = new Date();
+    priorDate.setDate(priorDate.getDate() - 180);
+
+    let pDay = String(priorDate.getDate()).padStart(2, '0');
+    let pMonth = String(priorDate.getMonth() + 1).padStart(2, '0');
+    let pYear = priorDate.getFullYear();
+
+    let priorFormat = pDay + "/" + pMonth + "/" + pYear;
+
+    document.getElementById("formatoutput").innerHTML += "<br/><br/><br/>";
+
+    // PERIOD text
+    document.getElementById("formatoutput").innerHTML +=
+        "PERIOD FROM " + priorFormat + " TO DATE. ";
+
+    // Comma-separated numbers in output
+    document.getElementById("formatoutput").innerHTML += IMEIArray.join(",") + " ";
+
+    document.getElementById("formatoutput").innerHTML += "<br/><br/><br/>";
+}
+
+</script>
+
+</body>
+</html>

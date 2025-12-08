@@ -35,6 +35,8 @@ with st.sidebar:
         st.session_state.page = "analyzer"
     if st.button("PTA Services"):
         st.session_state.page = "pta_services"
+    if st.button("📝 CDR Format"):
+        st.session_state.page = "cdr_format"
     if st.button("⚙️ Settings / Future Tools"):
         st.session_state.page = "settings"
 
@@ -263,6 +265,7 @@ elif st.session_state.page == "pta_services":
 
                     # Convert to DataFrame for display and export
                     df_final_results = pd.DataFrame(standardized_results)
+                    st.session_state.pta_results_for_cdr = standardized_results # Store for CDR Format section
                     st.dataframe(df_final_results)
 
                     # Prepare Excel for download
@@ -292,3 +295,100 @@ elif st.session_state.page == "pta_services":
 elif st.session_state.page == "settings":
     st.title("⚙️ Settings / Future Tools")
     st.info("Allah Pak Ka Huqam howa to yaha see or age qam karenge.")
+
+# -------------------- CDR Format Section --------------------
+elif st.session_state.page == "cdr_format":
+    st.title("📝 CDR Format")
+    st.info("Select an HTML template to view and see numbers from PTA Services filtered by category.")
+
+    # Move Clear Filtered Numbers button here
+    st.markdown("---")
+    if st.button("Clear Filtered Numbers", key="clear_filtered_numbers_top"): # New unique key
+        st.session_state.pta_results_for_cdr = []
+        st.session_state.selected_cdr_html = None 
+        st.rerun()
+    st.markdown("---")
+
+    html_files_to_process = {
+        "Jazz CDR HTML": {"file": "jazz cdr 6 MONTH.html", "operator_key": "Jazz Pakistan"},
+        "Telenor CDR HTML": {"file": "Telenor 6 month cdr.html", "operator_key": "Telenor Pakistan"},
+        "Ufone Multi CDR HTML": {"file": "ufone 2 or more cdr 1 year.html", "operator_key": "Ufone Pakistan"},
+        "Ufone Single CDR HTML": {"file": "ufone single cdr 1 year.html", "operator_key": "Ufone Pakistan"},
+        "Zong CDR HTML": {"file": "zong cdr 6 MONTH.html", "operator_key": "Zong Pakistan"},
+    }
+    
+    cols = st.columns(len(html_files_to_process))
+    
+    if "selected_cdr_html" not in st.session_state:
+        st.session_state.selected_cdr_html = None
+
+    for i, (button_label, file_info) in enumerate(html_files_to_process.items()):
+        with cols[i]:
+            if st.button(button_label, key=f"cdr_html_button_{button_label}"): # Unique key for each button
+                st.session_state.selected_cdr_html = file_info
+
+    # The rest of the HTML display and processing logic remains the same,
+    # but the clear button is no longer at the bottom.
+    if st.session_state.selected_cdr_html:
+        selected_file_name = st.session_state.selected_cdr_html["file"]
+        target_operator_key = st.session_state.selected_cdr_html["operator_key"]
+
+        st.markdown("---")
+        st.subheader(f"Processing Numbers for {target_operator_key} using `{selected_file_name}`")
+
+        # Get filtered numbers from PTA Services
+        filtered_numbers_for_html = []
+        if "pta_results_for_cdr" in st.session_state and st.session_state.pta_results_for_cdr:
+            for item in st.session_state.pta_results_for_cdr:
+                if target_operator_key.lower().replace(" pakistan", "") in item["Detected Operator"].lower().replace(" pakistan", ""):
+                    filtered_numbers_for_html.append(item["Phone Number"])
+
+        # Construct the numbers string for injection
+        numbers_to_inject = "\n".join(filtered_numbers_for_html)
+
+        # 1. Read the original HTML content
+        try:
+            with open(selected_file_name, "r", encoding="utf-8") as f:
+                html_content = f.read()
+            
+            # 2. Dynamically inject numbers into the textarea and trigger changeFormat()
+            # Use regex to find and inject content into the textarea
+            import re
+            
+            # Define a replacement function for re.sub
+            def replace_textarea_content(match):
+                return match.group(1) + numbers_to_inject + match.group(3)
+
+            modified_html_content = re.sub(
+                r'(<textarea[^>]*id=["\']formatinput["\'][^>]*>)((?!</textarea>).*?)(</textarea>)',
+                replace_textarea_content, # Pass the function as replacement
+                html_content,
+                flags=re.DOTALL | re.IGNORECASE
+            )
+            
+            # Inject a script to call changeFormat() after the DOM is ready
+            script_to_inject = """
+            <script type="text/javascript">
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(function() {
+                    if (typeof changeFormat === 'function') {
+                        changeFormat();
+                    }
+                }, 100); // Small delay to ensure everything is rendered
+            });
+            </script>
+            """
+            modified_html_content = modified_html_content.replace('</body>', f'{script_to_inject}</body>')
+            
+            st.components.v1.html(modified_html_content, height=750, scrolling=True) # Use st.components.v1.html for better rendering
+            
+            if not filtered_numbers_for_html:
+                st.info(f"No numbers found for '{target_operator_key}' in the PTA Services results to process. HTML displayed with empty input.")
+
+        except FileNotFoundError:
+            st.error(f"HTML file not found: `{selected_file_name}`. Please ensure it is in the root directory.")
+        except Exception as e:
+            st.error(f"Error reading or modifying HTML file: {e}")
+        st.markdown("---") # Add a final markdown for spacing
+
+
