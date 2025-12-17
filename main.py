@@ -11,7 +11,8 @@ import asyncio
 import time
 import zipfile
 import io
-import pandas as pd # Added for DataFrame handling
+import pandas as pd
+import auth
 
 # Load Gemini API key
 load_dotenv()
@@ -24,47 +25,7 @@ st.set_page_config(page_title="Urdu Police App & Excel Analyzer", layout="wide")
 if "page" not in st.session_state:
     st.session_state.page = "app"  # default page
 
-# ---------- Sidebar ----------
-with st.sidebar:
-    st.image("Assets/app_icon.png", width=100)
-    st.markdown("### Menu")
-
-    if st.button("📝 Application Extractor"):
-        st.session_state.page = "app"
-    if st.button("📈 Excel Analyzer"):
-        st.session_state.page = "analyzer"
-    if st.button("PTA Services"):
-        st.session_state.page = "pta_services"
-    if st.button("📝 CDR Format"):
-        st.session_state.page = "cdr_format"
-    if st.button("⚙️ Settings / Future Tools"):
-        st.session_state.page = "settings"
-
-# ---------- Page Logic ----------
-
-REQUEST_LIMIT = 10   # max 10 requests
-TIME_WINDOW = 60     # in seconds (1 min)
-request_times = []   # store timestamps of last requests
-
-def check_rate_limit():
-    """Ensure only 10 requests per minute are sent."""
-    global request_times
-    now = time.time()
-    # Keep only timestamps from the last 60s
-    request_times = [t for t in request_times if now - t < TIME_WINDOW]
-
-    if len(request_times) >= REQUEST_LIMIT:
-        wait_time = TIME_WINDOW - (now - request_times[0])
-        st.warning(f"⏳ Rate limit reached! Waiting {int(wait_time)}s before next request...")
-        time.sleep(wait_time)
-
-    # Add current request timestamp
-    request_times.append(time.time())
-
-# ---------- Page Logic ----------
-
-# -------------------- Application Extractor --------------------
-if st.session_state.page == "app":
+def handle_application_extractor():
     st.title("📝 Urdu Police Application Extractor")
     
     uploaded_files = st.file_uploader(
@@ -168,8 +129,7 @@ if st.session_state.page == "app":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-# -------------------- Excel Analyzer --------------------
-elif st.session_state.page == "analyzer":
+def handle_excel_analyzer():
     st.title("📈 Excel Analyzer")
     st.info("Upload multiple Excel/CSV files to analyze Mobile Numbers & Addresses.")
 
@@ -208,7 +168,7 @@ elif st.session_state.page == "analyzer":
             mime="application/zip"
         )
 
-elif st.session_state.page == "pta_services":
+def handle_pta_services():
     st.title("PTA Services - Operator Lookup and Sorted Export")
 
     st.subheader("Enter Phone Numbers for Lookup and Sorting")
@@ -289,15 +249,7 @@ elif st.session_state.page == "pta_services":
         else:
             st.warning("Please enter phone numbers to process.")
 
-
-
-# -------------------- Settings / Future Tools --------------------
-elif st.session_state.page == "settings":
-    st.title("⚙️ Settings / Future Tools")
-    st.info("Allah Pak Ka Huqam howa to yaha see or age qam karenge.")
-
-# -------------------- CDR Format Section --------------------
-elif st.session_state.page == "cdr_format":
+def handle_cdr_format():
     st.title("📝 CDR Format")
     st.info("Select an HTML template to view and see numbers from PTA Services filtered by category.")
 
@@ -393,4 +345,83 @@ elif st.session_state.page == "cdr_format":
             st.error(f"Error reading or modifying HTML file: {e}")
         st.markdown("---") # Add a final markdown for spacing
 
+def handle_settings():
+    st.title("⚙️ Settings / Future Tools")
+    st.info("Allah Pak Ka Huqam howa to yaha see or age qam karenge.")
 
+# ---------- Rate Limiting ----------
+REQUEST_LIMIT = 10   # max 10 requests
+TIME_WINDOW = 60     # in seconds (1 min)
+request_times = []   # store timestamps of last requests
+
+def check_rate_limit():
+    """Ensure only 10 requests per minute are sent."""
+    global request_times
+    now = time.time()
+    # Keep only timestamps from the last 60s
+    request_times = [t for t in request_times if now - t < TIME_WINDOW]
+
+    if len(request_times) >= REQUEST_LIMIT:
+        wait_time = TIME_WINDOW - (now - request_times[0])
+        st.warning(f"⏳ Rate limit reached! Waiting {int(wait_time)}s before next request...")
+        time.sleep(wait_time)
+
+    # Add current request timestamp
+    request_times.append(time.time())
+
+# ---------- Main App ----------
+def main():
+    if not auth.is_logged_in():
+        auth.login()
+        return
+
+    with st.sidebar:
+        st.image("Assets/app_icon.png", width=100)
+        st.markdown("### Menu")
+        
+        user_services = auth.get_user_services()
+        
+        service_map = {
+            "Application Extractor": "app",
+            "Excel Analyzer": "analyzer",
+            "PTA Services": "pta_services",
+            "CDR Format": "cdr_format",
+            "Admin": "admin",
+            "Settings / Future Tools": "settings"
+        }
+
+        service_icons = {
+            "Application Extractor": "📝",
+            "Excel Analyzer": "📈",
+            "PTA Services": "📞",
+            "CDR Format": "📄",
+            "Admin": "⚙️",
+            "Settings / Future Tools": "🔮"
+        }
+
+        for service in user_services:
+            if service in service_map:
+                icon = service_icons.get(service, "➡️")
+                if st.button(f"{icon} {service}"):
+                    st.session_state.page = service_map[service]
+
+        if st.button("Logout"):
+            auth.logout()
+
+    page = st.session_state.get("page", "app")
+
+    if page == "app":
+        handle_application_extractor()
+    elif page == "analyzer":
+        handle_excel_analyzer()
+    elif page == "pta_services":
+        handle_pta_services()
+    elif page == "cdr_format":
+        handle_cdr_format()
+    elif page == "admin":
+        auth.admin_section()
+    elif page == "settings":
+        handle_settings()
+
+if __name__ == "__main__":
+    main()
