@@ -7,16 +7,16 @@
             "PTA Services",
             "CDR Format",
             "Admin",
-            "Settings / Future Tools"
+            "Vehicle and Mobile"
         ]
     },
     "m.waseem5196@gmail.com": {
-        "password": "Mw5653829@",
+        "password": "waseemkhan",
         "services": [
-            "CDR Format",
-            "PTA Services",
             "Excel Analyzer",
-            "Application Extractor"
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services"
         ]
     }
 }

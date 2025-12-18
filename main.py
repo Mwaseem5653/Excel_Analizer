@@ -1,3 +1,5 @@
+import atexit
+import sys
 import os
 import fitz  # PyMuPDF
 import streamlit as st
@@ -13,6 +15,26 @@ import zipfile
 import io
 import pandas as pd
 import auth
+import requests
+from io import BytesIO
+import subprocess
+
+def normalize_phone_number(num: str):
+    num = num.strip()
+
+    # agar 10 digit ho aur 3 se start ho → 0 add karo
+    if len(num) == 10 and num.startswith("3"):
+        return "0" + num
+
+    # agar already 11 digit aur 0 se start ho → ok
+    if len(num) == 11 and num.startswith("0"):
+        return num
+    if len(num) == 12 and num.startswith("92"):
+        return "0" + num[2:]
+
+    # baqi invalid
+    return None
+
 
 # Load Gemini API key
 load_dotenv()
@@ -27,6 +49,16 @@ if "page" not in st.session_state:
 
 def handle_application_extractor():
     st.title("📝 Urdu Police Application Extractor")
+    
+    model_options = {
+        "Gemini 1.5 Flash": "models/gemini-flash-latest",
+        "Gemini 2.0 Flash": "models/gemini-2.0-flash",
+        "Gemini 2.5 Flash": "models/gemini-2.5-flash",
+        "Gemini 2.5 Flash Image": "models/gemini-2.5-flash-image",
+        "Gemini 2.5 Flash Image Preview": "models/gemini-2.5-flash-image-preview"
+    }
+    selected_model_key = st.selectbox("Select Gemini Model", list(model_options.keys()), index=1)
+    selected_model_name = model_options[selected_model_key]
     
     uploaded_files = st.file_uploader(
         "Upload handwritten Urdu application image(s) or PDF(s):",
@@ -95,7 +127,7 @@ def handle_application_extractor():
             # ✅ Apply Rate Limit before every request
             check_rate_limit()
 
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = genai.GenerativeModel(selected_model_name)
 
             try:
                 response = model.generate_content(
@@ -178,7 +210,18 @@ def handle_pta_services():
         if phone_numbers_input:
             from utils.operator_lookup import find_operators_and_download
             
-            phone_numbers = [num.strip() for num in phone_numbers_input.split('\n') if num.strip()]
+            raw_numbers = [num.strip() for num in phone_numbers_input.split('\n') if num.strip()]
+
+            phone_numbers = []
+            invalid_numbers = []
+
+            for num in raw_numbers:
+                    normalized = normalize_phone_number(num)
+                    if normalized:
+                        phone_numbers.append(normalized)
+                    else:
+                        invalid_numbers.append(num)
+
             
             if phone_numbers:
                 try:
@@ -345,9 +388,335 @@ def handle_cdr_format():
             st.error(f"Error reading or modifying HTML file: {e}")
         st.markdown("---") # Add a final markdown for spacing
 
-def handle_settings():
-    st.title("⚙️ Settings / Future Tools")
-    st.info("Allah Pak Ka Huqam howa to yaha see or age qam karenge.")
+
+
+# --- Server Management ---
+import socket
+from contextlib import closing
+
+def find_free_port(start_port):
+    for port in range(start_port, start_port + 100):
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+            if s.connect_ex(('127.0.0.1', port)) != 0:
+                return port
+    return None
+
+def start_server():
+    """Starts the FastAPI server as a background process."""
+    if "server_process" not in st.session_state:
+        PORT_FILE = ".uvicorn_port"
+        DEFAULT_PORT = 8000
+
+        try:
+            with open(PORT_FILE, "r") as f:
+                port = int(f.read().strip())
+        except (IOError, ValueError):
+            port = DEFAULT_PORT
+        
+        free_port = find_free_port(port)
+        
+        if not free_port:
+            st.error(f"Could not find a free port starting from {port}.")
+            return
+
+        try:
+            with open(PORT_FILE, "w") as f:
+                f.write(str(free_port))
+        except IOError:
+            # Non-critical, we can still proceed
+            pass
+        
+        st.session_state["backend_port"] = free_port
+
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        venv_path = os.path.join(script_dir, "venv")
+        
+        command = []
+        if os.path.exists(venv_path) and sys.platform == "win32":
+            python_executable = os.path.join(venv_path, "Scripts", "python.exe")
+            command = [
+                python_executable, "-m", "uvicorn", "fastapi_server:app",
+                "--host", "127.0.0.1", "--port", str(free_port)
+            ]
+        else:
+            command = [
+                "uvicorn", "fastapi_server:app", "--host", "0.0.0.0", "--port", str(free_port)
+            ]
+
+        try:
+            st.session_state.server_process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            )
+            
+            time.sleep(3)
+
+            if st.session_state.server_process.poll() is not None:
+                st.error("Backend server failed to start. See logs below.")
+                stdout, stderr = st.session_state.server_process.communicate()
+                st.text("Server stdout:")
+                st.code(stdout.decode('utf-8', errors='ignore'))
+                st.text("Server stderr:")
+                st.code(stderr.decode('utf-8', errors='ignore'))
+                st.session_state.server_process = None
+
+        except FileNotFoundError:
+            st.error(f"Error: The command '{command[0]}' was not found.")
+            st.error("Please ensure that your environment is set up correctly.")
+            st.session_state.server_process = None
+        except Exception as e:
+            st.error(f"An unexpected error occurred while starting the server: {e}")
+            st.session_state.server_process = None
+
+def stop_server():
+    """Stops the FastAPI server if it's running."""
+    if "server_process" in st.session_state:
+        st.session_state.server_process.terminate()
+        st.session_state.server_process = None
+
+# Start the server when the app starts
+start_server()
+
+# Register the stop_server function to be called on exit
+atexit.register(stop_server)
+
+
+
+
+def show_main_app():
+
+
+    port = st.session_state.get("backend_port", 8000)
+    SIM_BACKEND_URL = f"http://127.0.0.1:{port}/get-info/"
+    VEHICLE_BACKEND_URL = f"http://127.0.0.1:{port}/get-vehicle-info/"
+
+    st.title("🇵🇰 Information Extractor")
+    st.markdown("Select the type of information you want to search for.")
+
+    search_type = st.selectbox("Select Search Type", ["SIM Info", "Vehicle Info"])
+
+    st.markdown("---")
+
+    if search_type == "SIM Info":
+        st.header("SIM Owner Details")
+
+        # Option to either manually enter numbers or upload a file
+        input_method = st.radio("Choose input method:", ("Manual Entry", "Upload Excel File"))
+
+        if input_method == "Manual Entry":
+            st.subheader("Multiple Search")
+            search_terms = st.text_area(
+                "Enter Phone Numbers / CNICs",
+                placeholder="03001234567\n03111234567\n3520212345678",
+                help="Enter multiple values separated by new line or comma"
+            )
+
+            if st.button("🔍 Search SIM Info"):
+                raw_items = search_terms.replace(",", "\n").split("\n")
+                items = [i.strip() for i in raw_items if i.strip()]
+
+                # Add '0' to 10-digit numbers
+                processed_items = []
+                for item in items:
+                    if len(item) == 10 and item.isdigit():
+                        processed_items.append("0" + item)
+                    else:
+                        processed_items.append(item)
+                items = processed_items
+
+                if not items:
+                    st.error("Please enter at least one phone number or CNIC.")
+                else:
+                    results = []
+                    with st.spinner("Fetching SIM data..."):
+                        for item in items:
+                            if not item.isdigit() or len(item) not in (11, 13):
+                                results.append({
+                                    "Input": item, "Name": "Invalid", "Number": "Invalid",
+                                    "CNIC": "Invalid", "Address": "Invalid", "Status": "Invalid Format"
+                                })
+                                continue
+                            try:
+                                response = requests.post(f"{SIM_BACKEND_URL}?phone_number={item}", timeout=10)
+                                data = response.json()
+                                if isinstance(data, dict) and data.get("error"):
+                                    results.append({
+                                        "Input": item, "Name": "", "Number": "", "CNIC": "",
+                                        "Address": "", "Status": data["error"]
+                                    })
+                                elif isinstance(data, list):
+                                    for record in data:
+                                        results.append({
+                                            "Input": item, "Name": record.get("name", ""), "Number": record.get("number", ""),
+                                            "CNIC": record.get("cnic", ""), "Address": record.get("address", ""), "Status": "Found"
+                                        })
+                                else:
+                                    results.append({
+                                        "Input": item, "Name": "", "Number": "", "CNIC": "",
+                                        "Address": "", "Status": "Unexpected response format"
+                                    })
+                            except Exception as e:
+                                results.append({
+                                    "Input": item, "Name": "", "Number": "", "CNIC": "",
+                                    "Address": "", "Status": f"Request Failed: {e}"
+                                })
+                    df = pd.DataFrame(results)
+                    st.success(f"Results found: {len(df)}")
+                    st.dataframe(df, use_container_width=True)
+                    excel_buffer = BytesIO()
+                    df.to_excel(excel_buffer, index=False)
+                    excel_buffer.seek(0)
+                    st.download_button(
+                        label="⬇️ Download Excel", data=excel_buffer,
+                        file_name="sim_info_results.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+
+        elif input_method == "Upload Excel File":
+            st.subheader("Upload and Process Excel File")
+            uploaded_file = st.file_uploader("Choose an Excel file", type="xlsx")
+
+            if uploaded_file is not None:
+                try:
+                    # Read all sheets from the uploaded Excel file
+                    all_sheets = pd.read_excel(uploaded_file, sheet_name=None)
+
+                    if "Mobile Numbers" not in all_sheets:
+                        st.error("The Excel file must contain a 'Mobile Numbers' sheet.")
+                    else:
+                        df_upload = all_sheets["Mobile Numbers"]
+                        
+                        if "Mobile Number" not in df_upload.columns:
+                            st.error("The 'Mobile Numbers' sheet must contain a 'Mobile Number' column.")
+                        else:
+                            # Clean the 'Mobile Number' column
+                            df_upload['Mobile Number'] = df_upload['Mobile Number'].astype(str).str.replace(r'\.0$', '', regex=True)
+                            df_upload['Mobile Number'] = df_upload['Mobile Number'].apply(lambda x: '0' + x if len(x) == 10 and x.isdigit() else x)
+                            
+                            st.write("Original Data in 'Mobile Numbers' sheet:")
+                            st.dataframe(df_upload)
+
+                            if st.button("🚀 Fetch Data and Create New Sheet"):
+                                items = df_upload["Mobile Number"].dropna().tolist()
+                                
+                                if not items:
+                                    st.error("No phone numbers found in the 'Mobile Number' column.")
+                                else:
+                                    table_placeholder = st.empty()
+                                    all_results = []
+                                    
+                                    with st.spinner("Fetching data for all numbers..."):
+                                        for item in items:
+                                            try:
+                                                response = requests.post(f"{SIM_BACKEND_URL}?phone_number={item}", timeout=10)
+                                                data = response.json()
+                                                if isinstance(data, list) and data:
+                                                    # If multiple records are found, append them as separate rows
+                                                    for record in data:
+                                                        all_results.append({
+                                                            "Original Phone Number": item,
+                                                            "Name": record.get("name"),
+                                                            "Number": record.get("number"),
+                                                            "CNIC": record.get("cnic"),
+                                                            "Address": record.get("address")
+                                                        })
+                                                else:
+                                                    all_results.append({
+                                                        "Original Phone Number": item, "Name": "Not Found",
+                                                        "Number": "", "CNIC": "", "Address": ""
+                                                    })
+                                            except Exception:
+                                                all_results.append({
+                                                    "Original Phone Number": item, "Name": "Request Failed",
+                                                    "Number": "", "CNIC": "", "Address": ""
+                                                })
+                                            
+                                            df_results_live = pd.DataFrame(all_results)
+                                            table_placeholder.dataframe(df_results_live)
+
+                                    df_results = pd.DataFrame(all_results)
+                                    
+                                    # Prepend space to 'Number' and 'CNIC' to prevent scientific notation
+                                    if "Number" in df_results.columns:
+                                        df_results["Number"] = df_results["Number"].astype(str).apply(lambda x: ' ' + x)
+                                    if "CNIC" in df_results.columns:
+                                        df_results["CNIC"] = df_results["CNIC"].astype(str).apply(lambda x: ' ' + x)
+                                    
+                                    # Add the results as a new sheet
+                                    all_sheets["Search Results"] = df_results
+
+                                    st.success("Data fetching complete!")
+                                    st.write("New 'Search Results' sheet created with the fetched data.")
+                                    
+                                    # Write all sheets to a new Excel file in memory
+                                    excel_buffer_updated = BytesIO()
+                                    with pd.ExcelWriter(excel_buffer_updated, engine='xlsxwriter') as writer:
+                                        for sheet_name, df in all_sheets.items():
+                                            df.to_excel(writer, sheet_name=sheet_name, index=False)
+                                            # Auto-adjust columns
+                                            worksheet = writer.sheets[sheet_name]
+                                            for i, col in enumerate(df.columns):
+                                                max_len = max(df[col].astype(str).map(len).max(), len(str(col))) + 2
+                                                worksheet.set_column(i, i, max_len)
+
+                                    
+                                    excel_buffer_updated.seek(0)
+                                    
+                                    st.download_button(
+                                        label="⬇️ Download Updated Excel File",
+                                        data=excel_buffer_updated,
+                                        file_name="updated_sim_info_with_results.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                    )
+                except Exception as e:
+                    st.error(f"An error occurred: {e}")
+
+    elif search_type == "Vehicle Info":
+        st.header("Sindh Vehicle Details")
+        vehicle_category = st.selectbox("Select Vehicle Category", ["", "2 wheeler", "4 wheeler"])
+        reg_number = st.text_input("Enter Registration Number", placeholder="ABC-123")
+        if st.button("🔍 Search Vehicle Info"):
+            if not reg_number or not vehicle_category:
+                st.error("Please select category and enter registration number.")
+            else:
+                category_map = {"2 wheeler": "2W", "4 wheeler": "4W"}
+                api_category = category_map[vehicle_category]
+                with st.spinner("Fetching vehicle data..."):
+                    try:
+                        response = requests.post(
+                            f"{VEHICLE_BACKEND_URL}?reg_no={reg_number}&category={api_category}",
+                            timeout=10
+                        )
+                        data = response.json()
+                        if data.get("error"):
+                            st.error(data["error"])
+                        else:
+                            vehicle_data = {
+                                "Attribute": [
+                                    "Registration Number", "Owner Name", "Owner CNIC", "Model",
+                                    "Model Year", "Color", "Engine Number", "Chassis Number",
+                                    "Registration Date", "CPLC Status", "District", "Branch"
+                                ],
+                                "Value": [
+                                    data.get("registrationNumber"), data.get("ownerName"), data.get("ownerCNIC"),
+                                    f"{data.get('manufacturerName', '')} {data.get('modelName', '')}",
+                                    data.get("modelYear"), data.get("color"), data.get("engineNumber"),
+                                    data.get("chassisNumber"), data.get("registrationDate"),
+                                    data.get("cplcStatus"), data.get("districtName"), data.get("branchName"),
+                                ]
+                            }
+                            df = pd.DataFrame(vehicle_data)
+                            st.table(df)
+                    except Exception as e:
+                        st.error(f"Server loaded try again later")
+    st.markdown("""
+    ---
+    *Disclaimer: This tool uses third-party public APIs. Data accuracy is not guaranteed.*
+    """)
+
+
 
 # ---------- Rate Limiting ----------
 REQUEST_LIMIT = 10   # max 10 requests
@@ -369,6 +738,10 @@ def check_rate_limit():
     # Add current request timestamp
     request_times.append(time.time())
 
+def handle_settings():
+    st.title("Settings / Future Tools")
+    st.info("This section is under construction.")
+
 # ---------- Main App ----------
 def main():
     if not auth.is_logged_in():
@@ -386,6 +759,7 @@ def main():
             "Excel Analyzer": "analyzer",
             "PTA Services": "pta_services",
             "CDR Format": "cdr_format",
+            "Vehicle and Mobile": "vehicle_and_mobile",
             "Admin": "admin",
             "Settings / Future Tools": "settings"
         }
@@ -395,6 +769,7 @@ def main():
             "Excel Analyzer": "📈",
             "PTA Services": "📞",
             "CDR Format": "📄",
+            "Vehicle and Mobile": "🔍",
             "Admin": "⚙️",
             "Settings / Future Tools": "🔮"
         }
@@ -418,6 +793,8 @@ def main():
         handle_pta_services()
     elif page == "cdr_format":
         handle_cdr_format()
+    elif page == "vehicle_and_mobile":
+        show_main_app()
     elif page == "admin":
         auth.admin_section()
     elif page == "settings":

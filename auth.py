@@ -17,7 +17,7 @@ def load_users():
                     "PTA Services",
                     "CDR Format",
                     "Admin",
-                    "Settings / Future Tools"
+                    "Vehicle and Mobile"
                 ]
             },
             
@@ -89,7 +89,7 @@ def admin_section():
         
         all_services = [
             "Application Extractor", "Excel Analyzer", "PTA Services", 
-            "CDR Format", "Admin", "Settings / Future Tools"
+            "CDR Format", "Vehicle and Mobile", "Admin", "Settings / Future Tools"
         ]
         selected_services = st.multiselect("Select services for the new user", all_services)
         

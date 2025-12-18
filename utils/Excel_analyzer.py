@@ -56,9 +56,9 @@ def analyze_excel(file_path):
         return num if re.fullmatch(r"3\d{9}", num) else None
 
     if a_col:
-        df[a_col] = df[a_col].apply(normalize_number).apply(lambda x: f" 0{x}" if pd.notna(x) else None)
+        df[a_col] = df[a_col].apply(normalize_number).apply(lambda x: f" {x}" if pd.notna(x) else None)
 
-    df[b_col] = df[b_col].apply(normalize_number).apply(lambda x: f" 0{x}" if pd.notna(x) else None)
+    df[b_col] = df[b_col].apply(normalize_number).apply(lambda x: f" {x}" if pd.notna(x) else None)
 
     # -------------------- MOBILE NUMBER SUMMARY WITH DATE RANGE --------------------
     mobile_df = df[[b_col, "__DATE__"]].dropna(subset=[b_col])
