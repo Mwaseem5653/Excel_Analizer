@@ -599,7 +599,12 @@ def show_main_app():
                             st.dataframe(df_upload)
 
                             if st.button("🚀 Fetch Data and Create New Sheet"):
-                                items = df_upload["Mobile Number"].dropna().tolist()
+                                items = (
+                                df_upload["Mobile Number"]
+                                .dropna()
+                                .head(10)
+                                .tolist()
+                        )
                                 
                                 if not items:
                                     st.error("No phone numbers found in the 'Mobile Number' column.")
