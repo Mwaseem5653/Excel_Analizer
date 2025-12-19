@@ -222,7 +222,7 @@ def handle_pta_services():
                     else:
                         invalid_numbers.append(num)
 
-            
+            phone_numbers = phone_numbers[:10]
             if phone_numbers:
                 try:
                     # Perform operator lookup
