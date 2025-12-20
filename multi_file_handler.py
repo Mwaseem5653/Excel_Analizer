@@ -1,12 +1,12 @@
 # multi_file_handler.py
 import os
-import fitz
 
 async def handle_files(message):
     """
     Return a list of dicts with file names and paths.
     For PDFs, each page gets a virtual path: "file.pdf - Page 1"
     """
+    import fitz # Move import here
     results = []
 
     for file in message.elements:
