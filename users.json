@@ -8,6 +8,7 @@
             "CDR Format",
             "Admin",
             "Vehicle and Mobile"
+            
         ]
     },
     "m.waseem5196@gmail.com": {
@@ -18,5 +19,43 @@
             "Vehicle and Mobile",
             "PTA Services"
         ]
+    },
+    "dicbranch": {
+        "password": "dicbranch",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services"
+        ]
+    },
+    "noorahmed": {
+        "password": "noorahmed",
+        "services": [
+            "Application Extractor",
+            "Excel Analyzer",
+            "PTA Services",
+            "CDR Format",
+            "Admin",
+            "Vehicle and Mobile"
+        ]
+    },
+    "diclandhi": {
+        "password": "diclandhi",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services"
+        ]
+    },
+    "ameenhazariya": {
+        "password": "ameenhazariya",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile"
+        ]
     }
+
 }
