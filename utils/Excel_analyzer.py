@@ -8,44 +8,48 @@ from utils.table_header_finder import read_excel_auto
 
 
 def analyze_excel(file_path):
-    """
-    Professional Excel Analyzer
-    Now includes:
-    - Start & End Date for B-number usage
-    - Start & End Date for Address usage
-    """
 
     # -------------------- Read Excel --------------------
     file_ext = os.path.splitext(file_path)[1].lower()
     if file_ext == ".csv":
         df = pd.read_csv(file_path)
-        temp_excel_path = os.path.splitext(file_path)[0] + "_converted.xlsx"
-        df.to_excel(temp_excel_path, index=False)
-        file_path = temp_excel_path
     else:
         df = read_excel_auto(file_path)
 
-    # -------------------- Identify Columns --------------------
-    possible_a_cols = ["A Number", "ANUMBER", "a number", "A party", "A_party", "Aparty"]
-    possible_b_cols = ["B Number", "BNUMBER", "b number", "b party", "b_party", "CALL_DIALED_NUM", "BParty"]
+    df_original = df.copy()  # FULL RAW BACKUP
 
-    a_col = next((col for col in df.columns if col.strip().lower() in [x.lower() for x in possible_a_cols]), None)
-    b_col = next((col for col in df.columns if col.strip().lower() in [x.lower() for x in possible_b_cols]), None)
+    # -------------------- Column Detection --------------------
+    def find_col(possible):
+        return next((c for c in df.columns if c.strip().lower() in
+                     [x.lower() for x in possible]), None)
 
+    b_col = find_col(["B Number", "BNUMBER", "b number", "b party", "b_party", "CALL_DIALED_NUM", "BParty"])
     if not b_col:
-        raise ValueError("❌ No valid B-number column found")
+        raise ValueError("❌ B Party column not found")
 
-    # -------------------- Identify Date Column --------------------
-    possible_date_cols = ["CALL_START_DT_TM", "Start Date", "Start Time", "Date", "STRT_TM", "Datetime"]
-    date_col = next((col for col in df.columns if col.strip().lower() in [x.lower() for x in possible_date_cols]), None)
+    calltype_col = find_col([
+        "CallType", "CALL_TYPE", "Type", "SERVICE_TYPE", "RECORD_TYPE"
+    ])
 
+    duration_col = find_col([
+        "DURATION", "Call Duration", "DUR_SEC", "DURATION_SEC", "BILLABLE_SECONDS"
+    ])
+
+    date_col = find_col([
+        "CALL_START_DT_TM", "Start Date", "Datetime", "Date", "STRT_TM"
+    ])
+
+    address_col = find_col(["Address", "Location", "Addr", "SITE_ADDRESS", "SiteLocation"])
+    imei_col = find_col(["IMEI", "imei", "Imei number", "IMEI numbe"])
+
+    # -------------------- Date --------------------
     if date_col:
         df["__DATE__"] = pd.to_datetime(df[date_col], errors="coerce")
     else:
         df["__DATE__"] = None
 
-    # -------------------- Normalize Numbers --------------------
-    def normalize_number(num):
+    # -------------------- CLEAN NUMBER (ANALYSIS ONLY) --------------------
+    def normalize(num):
         if pd.isna(num):
             return None
         num = re.sub(r"\D", "", str(num))
@@ -55,85 +59,121 @@ def analyze_excel(file_path):
             num = num[1:]
         return num if re.fullmatch(r"3\d{9}", num) else None
 
-    if a_col:
-        df[a_col] = df[a_col].apply(normalize_number).apply(lambda x: f" {x}" if pd.notna(x) else None)
+    df["__B_CLEAN__"] = df[b_col].apply(normalize)
 
-    df[b_col] = df[b_col].apply(normalize_number).apply(lambda x: f" {x}" if pd.notna(x) else None)
+    # -------------------- MOBILE SUMMARY --------------------
+    mob = df.dropna(subset=["__B_CLEAN__"])
+    g = mob.groupby("__B_CLEAN__")
 
-    # -------------------- MOBILE NUMBER SUMMARY WITH DATE RANGE --------------------
-    mobile_df = df[[b_col, "__DATE__"]].dropna(subset=[b_col])
-    mobile_group = mobile_df.groupby(b_col)
+    mobile_summary = pd.DataFrame({
+        "Mobile Number": g.size().index,
+        "Starting Date": g["__DATE__"].min().values,
+        "Ending Date": g["__DATE__"].max().values,
+        "Count": g.size().values
+    }).sort_values("Count", ascending=False)
 
-    mobile_count = pd.DataFrame({
-        "Mobile Number": mobile_group.size().index,
-        "Starting Date": mobile_group["__DATE__"].min().values,
-        "Ending Date": mobile_group["__DATE__"].max().values,
-        "Count": mobile_group.size().values
-    }).sort_values(by="Count", ascending=False)
-
-    # -------------------- ADDRESS SUMMARY WITH DATE RANGE --------------------
-    possible_address_cols = ["Address", "Location", "Addr", "SITE_ADDRESS", "SiteLocation"]
-    address_col = next((col for col in df.columns if col.strip().lower() in [x.lower() for x in possible_address_cols]), None)
-
+    # -------------------- ADDRESS SUMMARY --------------------
     address_summary = None
     if address_col:
-        address_df = df[[address_col, "__DATE__"]].dropna(subset=[address_col])
-        group = address_df.groupby(address_col)
-
+        g = df.groupby(address_col)
         address_summary = pd.DataFrame({
-            address_col: group.size().index,
-            "Starting Date": group["__DATE__"].min().values,
-            "Ending Date": group["__DATE__"].max().values,
-            "Count": group.size().values
-        }).sort_values(by="Count", ascending=False)
+            address_col: g.size().index,
+            "Starting Date": g["__DATE__"].min().values,
+            "Ending Date": g["__DATE__"].max().values,
+            "Count": g.size().values
+        }).sort_values("Count", ascending=False)
 
-    # -------------------- IMEI SUMMARY (Already Existing) --------------------
-    possible_imei_cols = ["IMEI", "imei", "Imei number", "IMEI numbe"]
-    imei_col = next((col for col in df.columns if col.strip().lower() in [x.lower() for x in possible_imei_cols]), None)
-
+    # -------------------- IMEI SUMMARY --------------------
     imei_summary = None
     if imei_col:
-        imei_df = df[[imei_col, "__DATE__"]].dropna(subset=[imei_col])
-        imei_df[imei_col] = imei_df[imei_col].astype(str)
-        group = imei_df.groupby(imei_col)
-
+        g = df.groupby(imei_col)
         imei_summary = pd.DataFrame({
-            "IMEI Number": group.size().index,
-            "Starting Date": group["__DATE__"].min().values,
-            "Ending Date": group["__DATE__"].max().values,
-            "Count": group.size().values
-        }).sort_values(by="Count", ascending=False)
+            "IMEI Number": g.size().index,
+            "Starting Date": g["__DATE__"].min().values,
+            "Ending Date": g["__DATE__"].max().values,
+            "Count": g.size().values
+        }).sort_values("Count", ascending=False)
 
-    # -------------------- Save Excel --------------------
-    output_dir = "temp_uploads"
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "analyzed_excel_formatted.xlsx")
+    # -------------------- CALL LOGS SHEET --------------------
+        call_df = df_original.copy()
 
-    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-        mobile_count.to_excel(writer, sheet_name="Mobile Numbers", index=False)
+        # normalize
+        call_df["CALLTYPE"] = (
+        call_df[calltype_col]
+        .astype(str)
+        .str.lower()
+        .str.replace(r"\s+", " ", regex=True)  # extra spaces remove
+        .str.strip()
+    )
+        call_df["DUR_SEC"] = pd.to_numeric(call_df[duration_col], errors="coerce").fillna(0)
+
+        # helper conditions
+        def is_in_call(x):
+            return x == "incoming"
+
+        def is_out_call(x):
+            return x == "outgoing"
+
+        def is_in_sms(x):
+            return x == "incoming sms"
+
+        def is_out_sms(x):
+            return x == "outgoing sms"
+
+        summary = (
+            call_df
+            .groupby(df["__B_CLEAN__"])
+            .apply(lambda x: pd.Series({
+                "Same-Num-Count": len(x),
+
+                "In-SMS": x["CALLTYPE"].apply(is_in_sms).sum(),
+                "Out-SMS": x["CALLTYPE"].apply(is_out_sms).sum(),
+                "In-Call": x["CALLTYPE"].apply(is_in_call).sum(),
+                "Out-Call": x["CALLTYPE"].apply(is_out_call).sum(),
+
+                "In-Call-Duration (Minutes)": round(
+                    x.loc[x["CALLTYPE"].apply(is_in_call), "DUR_SEC"].sum() / 60, 2
+                ),
+                "Out-Call-Duration (Minutes)": round(
+                    x.loc[x["CALLTYPE"].apply(is_out_call), "DUR_SEC"].sum() / 60, 2
+                ),
+            }))
+            .reset_index()                       # 👈 drop=False (default)
+            .rename(columns={"__B_CLEAN__": "B-party"})
+            .sort_values(by="Same-Num-Count", ascending=False)  # 👈 Z → A
+            .reset_index(drop=True)
+        )
+
+
+
+    # -------------------- SAVE --------------------
+    out_dir = "temp_uploads"
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "analyzed_excel_formatted.xlsx")
+
+    with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        mobile_summary.to_excel(writer, "Mobile Numbers", index=False)
         if address_summary is not None:
-            address_summary.to_excel(writer, sheet_name="Addresses", index=False)
+            address_summary.to_excel(writer, "Addresses", index=False)
         if imei_summary is not None:
-            imei_summary.to_excel(writer, sheet_name="IMEI Numbers", index=False)
-        df.to_excel(writer, sheet_name="Formatted Data", index=False)
+            imei_summary.to_excel(writer, "IMEI Numbers", index=False)
+        summary.to_excel(writer, "Call Logs", index=False)
+        df_original.to_excel(writer, "Formatted Data", index=False)
 
-    # -------------------- Apply Formatting --------------------
-    wb = load_workbook(output_path)
-    fill = PatternFill(start_color="ADD8E6", end_color="ADD8E6", fill_type="solid")
-    bold_font = Font(bold=True)
+    # -------------------- FORMAT --------------------
+    wb = load_workbook(out_path)
+    fill = PatternFill("solid", start_color="ADD8E6")
+    bold = Font(bold=True)
 
-    for sheet in wb.sheetnames:
-        ws = wb[sheet]
-
-        # Header formatting
-        for cell in ws[1]:
-            cell.fill = fill
-            cell.font = bold_font
-            cell.alignment = Alignment(horizontal="center")
-
+    for ws in wb.worksheets:
+        for c in ws[1]:
+            c.fill = fill
+            c.font = bold
+            c.alignment = Alignment(horizontal="center")
         for col in ws.columns:
-            length = max((len(str(cell.value)) for cell in col if cell.value), default=10)
-            ws.column_dimensions[get_column_letter(col[0].column)].width = length + 4
+            ws.column_dimensions[get_column_letter(col[0].column)].width = max(
+                len(str(cell.value)) if cell.value else 10 for cell in col
+            ) + 2
 
-    wb.save(output_path)
-    return output_path
+    wb.save(out_path)
+    return out_path

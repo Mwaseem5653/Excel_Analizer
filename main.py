@@ -1,11 +1,10 @@
-import atexit
-import sys
 import os
 import streamlit as st
 from dotenv import load_dotenv
 import time
 import auth
 import shutil
+import uuid
 
 # Load environment variables
 load_dotenv()
@@ -16,31 +15,16 @@ st.set_page_config(page_title="Urdu Police Application Extractor", layout="wide"
 # ---------- Session State ----------
 if "page" not in st.session_state:
     st.session_state.page = "app"  # default page
+    if "session_id" not in st.session_state:
+        st.session_state.session_id = str(uuid.uuid4())
 
-def cleanup_temp_files():
-    """Cleans up the temp_uploads directory."""
-    temp_dir = "temp_uploads"
-    if os.path.exists(temp_dir):
-        try:
-            for filename in os.listdir(temp_dir):
-                file_path = os.path.join(temp_dir, filename)
-                try:
-                    if os.path.isfile(file_path) or os.path.islink(file_path):
-                        os.unlink(file_path)
-                    elif os.path.isdir(file_path):
-                        shutil.rmtree(file_path)
-                except Exception as e:
-                    pass
-        except Exception:
-            pass
+SESSION_TEMP_DIR = os.path.join("temp_uploads", st.session_state.session_id)
+os.makedirs(SESSION_TEMP_DIR, exist_ok=True)
 
-# Run cleanup periodically or on startup
-if "last_cleanup" not in st.session_state:
-    cleanup_temp_files()
-    st.session_state.last_cleanup = time.time()
-elif time.time() - st.session_state.last_cleanup > 3600: # Every hour
-    cleanup_temp_files()
-    st.session_state.last_cleanup = time.time()
+# ---------- Cleanup ----------
+def cleanup_session_files():
+    if os.path.exists(SESSION_TEMP_DIR):
+        shutil.rmtree(SESSION_TEMP_DIR, ignore_errors=True)
 
 def normalize_phone_number(num: str):
     num = num.strip()
@@ -62,17 +46,17 @@ def handle_application_extractor():
     from multi_file_handler import handle_files
     from utils.extract_fields import extract_fields_from_text
     from utils.excel_writer import save_to_excel
-
+    
     st.title("📝 Urdu Police Application Extractor")
     
     genai.configure(api_key=os.getenv("GENAI_API_KEY"))
 
     model_options = {
-        "Gemini 1.5 Flash": "models/gemini-flash-latest",
-        "Gemini 2.0 Flash": "models/gemini-2.0-flash",
-        "Gemini 2.5 Flash": "models/gemini-2.5-flash",
-        "Gemini 2.5 Flash Image": "models/gemini-2.5-flash-image",
-        "Gemini 2.5 Flash Image Preview": "models/gemini-2.5-flash-image-preview"
+        # "Gemini 1.5 Flash": "models/gemini-flash-latest",
+        # "Gemini 2.0 Flash": "models/gemini-2.0-flash",
+         "Gemini 2.5 Flash": "models/gemini-2.5-flash",
+        # "Gemini 2.5 Flash Image": "models/gemini-2.5-flash-image",
+        # "Gemini 2.5 Flash Image Preview": "models/gemini-2.5-flash-image-preview"
     }
     selected_model_key = st.selectbox("Select Gemini Model", list(model_options.keys()), index=1)
     selected_model_name = model_options[selected_model_key]
@@ -124,7 +108,7 @@ def handle_application_extractor():
                 "Translate the content into English if needed and follow fields Example stricly and return Plain Text only\n\n"
                 "Fields Example:\n"
                 """
-Name: Furqan Ur Rehman (only applicant name)
+                Name: Furqan Ur Rehman (only applicant name)
                 Phone Number: 0313-0282098 (Mention in Last)
                 IMEI Number: 354882089097706 354882089094534
                 last Num Used: 0313-0282044 or None
@@ -160,6 +144,7 @@ Name: Furqan Ur Rehman (only applicant name)
                 file_name="extracted_data.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+        cleanup_session_files()
 
 def handle_excel_analyzer():
     # Lazy imports
@@ -202,7 +187,7 @@ def handle_excel_analyzer():
             file_name="Analyzed_Files.zip",
             mime="application/zip"
         )
-
+    cleanup_session_files() 
 def handle_pta_services():
     import io
     import pandas as pd
@@ -468,7 +453,7 @@ def main():
         st.title("Settings / Tools")
         st.subheader("System Maintenance")
         if st.button("🗑️ Clear Temp Files"):
-            cleanup_temp_files()
+            cleanup_session_files()
             st.success("Temp files cleared successfully!")
         st.info("This section is under construction for more tools.")
 
