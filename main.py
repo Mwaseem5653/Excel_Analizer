@@ -408,7 +408,7 @@ def show_main_app():
                 else: st.table(pd.DataFrame({"Attribute": list(data.keys()), "Value": list(data.values())}))
 
 # ---------- Rate Limiting ----------
-REQUEST_LIMIT = 10
+REQUEST_LIMIT = 5
 TIME_WINDOW = 60
 request_times = []
 
