@@ -408,8 +408,8 @@ def show_main_app():
                 else: st.table(pd.DataFrame({"Attribute": list(data.keys()), "Value": list(data.values())}))
 
 # ---------- Rate Limiting ----------
-REQUEST_LIMIT = 5
-TIME_WINDOW = 60
+REQUEST_LIMIT = 7
+TIME_WINDOW = 120
 request_times = []
 
 def check_rate_limit():
