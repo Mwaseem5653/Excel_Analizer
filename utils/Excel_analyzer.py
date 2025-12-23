@@ -16,7 +16,16 @@ def analyze_excel(file_path):
     else:
         df = read_excel_auto(file_path)
 
-    df_original = df.copy()  # FULL RAW BACKUP
+    df_original = df.copy()  # FORMATTED RAW BACKUP
+    formatted_df = df_original.copy()
+
+    for col in formatted_df.columns:
+        if pd.api.types.is_numeric_dtype(formatted_df[col]):
+            formatted_df[col] = formatted_df[col].apply(
+                lambda x: f" {int(x)}" if pd.notna(x) else x
+            )
+    
+
 
     # -------------------- Column Detection --------------------
     def find_col(possible):
@@ -28,15 +37,17 @@ def analyze_excel(file_path):
         raise ValueError("❌ B Party column not found")
 
     calltype_col = find_col([
-        "CallType", "CALL_TYPE", "Type", "SERVICE_TYPE", "RECORD_TYPE"
+        "CallType", "CALL_TYPE", "Type"
     ])
 
-    duration_col = find_col([
-        "DURATION", "Call Duration", "DUR_SEC", "DURATION_SEC", "BILLABLE_SECONDS"
-    ])
+    
 
     date_col = find_col([
-        "CALL_START_DT_TM", "Start Date", "Datetime", "Date", "STRT_TM"
+        "CALL_START_DT_TM", "Start Date", "Datetime", "Date", "STRT_TM","Start Time"
+    ])
+
+    inbound = find_col([
+        "INBOUND_OUTBOUND_IND","Direction"
     ])
 
     address_col = find_col(["Address", "Location", "Addr", "SITE_ADDRESS", "SiteLocation"])
@@ -93,50 +104,58 @@ def analyze_excel(file_path):
             "Ending Date": g["__DATE__"].max().values,
             "Count": g.size().values
         }).sort_values("Count", ascending=False)
+    if imei_summary is not None:
+        imei_summary["IMEI Number"] = imei_summary["IMEI Number"].astype(str).apply(lambda x: " " + x)
+
 
     # -------------------- CALL LOGS SHEET --------------------
         call_df = df_original.copy()
 
+       
+        call_df["__B_CLEAN__"] = df["__B_CLEAN__"]
+        call_df["__DATE__"] = df["__DATE__"]
+
         # normalize
-        call_df["CALLTYPE"] = (
-        call_df[calltype_col]
-        .astype(str)
-        .str.lower()
-        .str.replace(r"\s+", " ", regex=True)  # extra spaces remove
-        .str.strip()
-    )
-        call_df["DUR_SEC"] = pd.to_numeric(call_df[duration_col], errors="coerce").fillna(0)
+        if inbound and calltype_col:
+                # case: separate columns (sms/call + incoming/outgoing)
+                call_df["CALLTYPE"] = (
+                    call_df[inbound] + " " +
+                    call_df[calltype_col]
+                )
+        else:
+                # case: already combined column
+                call_df["CALLTYPE"] = call_df[calltype_col]
+
+       
+        call_df["CALLTYPE"] = (call_df["CALLTYPE"].str.lower().str.replace("-", " ", regex=False).str.replace(r"\s+", " ", regex=True).str.strip())
 
         # helper conditions
         def is_in_call(x):
-            return x == "incoming"
+            return x in ["incoming", "incoming call", "incomingcall","call incoming", "callincomig","voice incoming","voiceincoming","incoming voice","incomingvoice"]
 
         def is_out_call(x):
-            return x == "outgoing"
+            return x in ["outgoing", "outgoing call", "outgoingcall","call outgoing", "calloutgoing","voice outgoing","voiceoutgoing","outgoing voice","outgoingvoice"]
 
         def is_in_sms(x):
-            return x == "incoming sms"
+            return x in ["incoming sms","incomingsms","sms incoming", "smsincoming"]
 
         def is_out_sms(x):
-            return x == "outgoing sms"
+            return x in ["outgoing sms", "outgoingsms","sms outgoing", "smsoutgoing"]
 
         summary = (
             call_df
-            .groupby(df["__B_CLEAN__"])
+            .dropna(subset=["__B_CLEAN__"])        # ✅ important
+            .groupby("__B_CLEAN__")
             .apply(lambda x: pd.Series({
                 "Same-Num-Count": len(x),
-
+                "Starting Date": x["__DATE__"].min(),   # ✅ Start Date
+                "Ending Date": x["__DATE__"].max(),     # ✅ End Date
                 "In-SMS": x["CALLTYPE"].apply(is_in_sms).sum(),
                 "Out-SMS": x["CALLTYPE"].apply(is_out_sms).sum(),
                 "In-Call": x["CALLTYPE"].apply(is_in_call).sum(),
                 "Out-Call": x["CALLTYPE"].apply(is_out_call).sum(),
 
-                "In-Call-Duration (Minutes)": round(
-                    x.loc[x["CALLTYPE"].apply(is_in_call), "DUR_SEC"].sum() / 60, 2
-                ),
-                "Out-Call-Duration (Minutes)": round(
-                    x.loc[x["CALLTYPE"].apply(is_out_call), "DUR_SEC"].sum() / 60, 2
-                ),
+               
             }))
             .reset_index()                       # 👈 drop=False (default)
             .rename(columns={"__B_CLEAN__": "B-party"})
@@ -158,7 +177,7 @@ def analyze_excel(file_path):
         if imei_summary is not None:
             imei_summary.to_excel(writer, "IMEI Numbers", index=False)
         summary.to_excel(writer, "Call Logs", index=False)
-        df_original.to_excel(writer, "Formatted Data", index=False)
+        formatted_df.to_excel(writer, "Formatted Data", index=False)
 
     # -------------------- FORMAT --------------------
     wb = load_workbook(out_path)
@@ -170,10 +189,24 @@ def analyze_excel(file_path):
             c.fill = fill
             c.font = bold
             c.alignment = Alignment(horizontal="center")
+
         for col in ws.columns:
-            ws.column_dimensions[get_column_letter(col[0].column)].width = max(
+            col_letter = get_column_letter(col[0].column)
+
+            # ✅ Center align all cells
+            for cell in col:
+                cell.alignment = Alignment(horizontal="center")
+
+            # ✅ Prevent scientific notation (force TEXT)
+            ws.column_dimensions[col_letter].width = max(
                 len(str(cell.value)) if cell.value else 10 for cell in col
             ) + 2
+    ws = wb["Formatted Data"]
+
+    for col in ws.columns:
+        for cell in col:
+            cell.number_format = "@"
+            cell.alignment = Alignment(horizontal="center")
 
     wb.save(out_path)
     return out_path
