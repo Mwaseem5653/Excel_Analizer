@@ -52,11 +52,11 @@ def handle_application_extractor():
     genai.configure(api_key=os.getenv("GENAI_API_KEY"))
 
     model_options = {
-        # "Gemini 1.5 Flash": "models/gemini-flash-latest",
-        # "Gemini 2.0 Flash": "models/gemini-2.0-flash",
+         "Gemini 1.5 Flash": "models/gemini-flash-latest",
+         "Gemini 2.0 Flash": "models/gemini-2.0-flash",
          "Gemini 2.5 Flash": "models/gemini-2.5-flash",
-        # "Gemini 2.5 Flash Image": "models/gemini-2.5-flash-image",
-        # "Gemini 2.5 Flash Image Preview": "models/gemini-2.5-flash-image-preview"
+         "Gemini 2.5 Flash Image": "models/gemini-2.5-flash-image",
+         "Gemini 2.5 Flash Image Preview": "models/gemini-2.5-flash-image-preview"
     }
     selected_model_key = st.selectbox("Select Gemini Model", list(model_options.keys()), index=1)
     selected_model_name = model_options[selected_model_key]
@@ -143,9 +143,10 @@ def handle_application_extractor():
                 data=f,
                 file_name="extracted_data.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                
             )
+        
         cleanup_session_files()
-
 def handle_excel_analyzer():
     # Lazy imports
     import zipfile
@@ -186,6 +187,7 @@ def handle_excel_analyzer():
             data=zip_buffer,
             file_name="Analyzed_Files.zip",
             mime="application/zip"
+            
         )
     cleanup_session_files() 
 def handle_pta_services():
