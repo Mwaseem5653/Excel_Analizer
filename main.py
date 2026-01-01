@@ -139,16 +139,16 @@ def handle_application_extractor():
                 "Extract ONLY the following fields from this handwritten Urdu police application image. "
                 "Translate Urdu into English. Output PLAIN TEXT ONLY, no extra explanations, symbols, or guesses. "
                 "Use 'None' if a field is missing or unclear. Follow EXACT field names and order:\n\n"
-                "Name: <applicant name in english only leave hi father name>\n"
+                "Name: <applicant name in correct english like Muhammad Waseem >\n"
                 "Phone Number: <judge from context which phone number is active, or None>\n"
                 "IMEI Number: <all IMEIs separated by space or None>\n"
                 "Last Num Used: <judge from context which phone number was snatched , or None>\n"
                 "Mobile Model: <model or None>\n"
-                "Other Property: <property or None>\n"
+                "Other Property: <snatched properties like cash bike wallet etc or None>\n"
                 "Date Of Offence: <DD.MM.YYYY or None>\n"
                 "Time Of Offence: <HH:MM AM/PM or None>\n"
                 "Type: <Snatched/Theft/Lost or None>\n"
-                "Police Station: <station name or None>\n\n"
+                "Police Station: <like Ps-Zamantown Ps-Landhi Ps-Shahfaisal leave  etc and leave colony and other extended name  or None>\n\n"
                 
             )
 
