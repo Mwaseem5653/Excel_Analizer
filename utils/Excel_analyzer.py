@@ -1,13 +1,14 @@
 import pandas as pd
 import os
 import re
+import requests
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 from utils.table_header_finder import read_excel_auto
 
 
-def analyze_excel(file_path):
+def analyze_excel(file_path, top_n=15, enable_lookup=True):
 
     # -------------------- Read Excel --------------------
     file_ext = os.path.splitext(file_path)[1].lower()
@@ -17,16 +18,7 @@ def analyze_excel(file_path):
         df = read_excel_auto(file_path)
 
     df_original = df.copy()  # FORMATTED RAW BACKUP
-    formatted_df = df_original.copy()
-
-    for col in formatted_df.columns:
-        if pd.api.types.is_numeric_dtype(formatted_df[col]):
-            formatted_df[col] = formatted_df[col].apply(
-                lambda x: f" {int(x)}" if pd.notna(x) else x
-            )
     
-
-
     # -------------------- Column Detection --------------------
     def find_col(possible):
         return next((c for c in df.columns if c.strip().lower() in
@@ -59,6 +51,28 @@ def analyze_excel(file_path):
     else:
         df["__DATE__"] = None
 
+    # -------------------- PREPARE FORMATTED SHEET --------------------
+    formatted_df = df_original.copy()
+    
+    # 1. Format Date Column to String (if exists)
+    if date_col and date_col in formatted_df.columns:
+        # Check if it's already datetime, if not convert
+        if not pd.api.types.is_datetime64_any_dtype(formatted_df[date_col]):
+             formatted_df[date_col] = pd.to_datetime(formatted_df[date_col], errors='coerce')
+        
+        # Format as string
+        formatted_df[date_col] = formatted_df[date_col].dt.strftime('%Y-%m-%d %H:%M:%S').fillna('')
+
+    # 2. Format Numeric Columns (Skip Date)
+    for col in formatted_df.columns:
+        if col == date_col:
+            continue
+            
+        if pd.api.types.is_numeric_dtype(formatted_df[col]):
+            formatted_df[col] = formatted_df[col].apply(
+                lambda x: f" {int(x)}" if pd.notna(x) else x
+            )
+
     # -------------------- CLEAN NUMBER (ANALYSIS ONLY) --------------------
     def normalize(num):
         if pd.isna(num):
@@ -82,6 +96,63 @@ def analyze_excel(file_path):
         "Ending Date": g["__DATE__"].max().values,
         "Count": g.size().values
     }).sort_values("Count", ascending=False)
+
+    # -------------------- FETCH API INFO --------------------
+    mobile_summary["Name"] = ""
+    mobile_summary["CNIC"] = ""
+    mobile_summary["Address"] = ""
+    
+    lookup_cache = {} # Store results to use in Call Logs later
+
+    if enable_lookup:
+        # Get port from file or default
+        port = 8000
+        if os.path.exists(".uvicorn_port"):
+            try:
+                with open(".uvicorn_port", "r") as f:
+                    port = int(f.read().strip())
+            except:
+                pass
+        
+        api_url = f"http://127.0.0.1:{port}/get-info/"
+        
+        # Iterate over top N
+        for idx in mobile_summary.index[:top_n]:
+            raw_num = str(mobile_summary.at[idx, "Mobile Number"]).strip()
+            # Add 0 for 11-digit format
+            query_num = "0" + raw_num
+            
+            try:
+                resp = requests.post(api_url, params={"phone_number": query_num}, timeout=5)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    # API returns a list of dicts if successful
+                    if isinstance(data, list) and len(data) > 0:
+                        record = data[0]
+                        # Try common keys
+                        name_val = record.get("name") or record.get("Name") or ""
+                        cnic_val = record.get("cnic") or record.get("CNIC") or ""
+                        addr_val = record.get("address") or record.get("Address") or ""
+                        
+                        mobile_summary.at[idx, "Name"] = name_val
+                        # Add space to prevent scientific notation in Excel
+                        mobile_summary.at[idx, "CNIC"] = " " + str(cnic_val) if cnic_val else ""
+                        mobile_summary.at[idx, "Address"] = addr_val
+                        
+                        # Cache for Call Logs
+                        lookup_cache[raw_num] = {
+                            "Name": name_val,
+                            "CNIC": " " + str(cnic_val) if cnic_val else "",
+                            "Address": addr_val
+                        }
+            except Exception as e:
+                print(f"⚠️ API Check Failed for {query_num}: {e}")
+
+    # Reorder columns: Mobile Number, Name, CNIC, Address, ... others
+    cols = list(mobile_summary.columns)
+    # Ensure specific order
+    desired_order = ["Mobile Number", "Name", "CNIC", "Address", "Starting Date", "Ending Date", "Count"]
+    mobile_summary = mobile_summary[desired_order]
 
     # -------------------- ADDRESS SUMMARY --------------------
     address_summary = None
@@ -147,13 +218,13 @@ def analyze_excel(file_path):
             .dropna(subset=["__B_CLEAN__"])        # ✅ important
             .groupby("__B_CLEAN__")
             .apply(lambda x: pd.Series({
-                "Same-Num-Count": len(x),
                 "Starting Date": x["__DATE__"].min(),   # ✅ Start Date
                 "Ending Date": x["__DATE__"].max(),     # ✅ End Date
                 "In-SMS": x["CALLTYPE"].apply(is_in_sms).sum(),
                 "Out-SMS": x["CALLTYPE"].apply(is_out_sms).sum(),
                 "In-Call": x["CALLTYPE"].apply(is_in_call).sum(),
                 "Out-Call": x["CALLTYPE"].apply(is_out_call).sum(),
+                 "Same-Num-Count": len(x),
 
                
             }))
@@ -162,6 +233,17 @@ def analyze_excel(file_path):
             .sort_values(by="Same-Num-Count", ascending=False)  # 👈 Z → A
             .reset_index(drop=True)
         )
+
+        # -------------------- INJECT API INFO INTO CALL LOGS --------------------
+        summary["Name"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("Name", ""))
+        summary["CNIC"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("CNIC", ""))
+        summary["Address"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("Address", ""))
+
+        # Reorder Summary Columns: B-party, Name, CNIC, Address, ... rest
+        sum_cols = list(summary.columns)
+        base_cols = ["B-party", "Name", "CNIC", "Address"]
+        other_cols = [c for c in sum_cols if c not in base_cols]
+        summary = summary[base_cols + other_cols]
 
 
 

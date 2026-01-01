@@ -43,23 +43,46 @@ def handle_application_extractor():
     import google.generativeai as genai
     import fitz  # PyMuPDF
     import asyncio
+    import base64
+    from groq import Groq
     from multi_file_handler import handle_files
     from utils.extract_fields import extract_fields_from_text
     from utils.excel_writer import save_to_excel
     
     st.title("📝 Urdu Police Application Extractor")
     
-    genai.configure(api_key=os.getenv("GENAI_API_KEY"))
+    # --- CONFIGURATION SECTION ---
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        ai_provider = st.selectbox("Select AI Provider", ["Groq", "Gemini"], index=0)
+        
+    with col2:
+        batch_size = st.selectbox("Batch Size (Wait 60s after processing)", [5, 10, 15, 20], index=0)
 
-    model_options = {
-         "Gemini 1.5 Flash": "models/gemini-flash-latest",
-         "Gemini 2.0 Flash": "models/gemini-2.0-flash",
-         "Gemini 2.5 Flash": "models/gemini-2.5-flash",
-         "Gemini 2.5 Flash Image": "models/gemini-2.5-flash-image",
-         "Gemini 2.5 Flash Image Preview": "models/gemini-2.5-flash-image-preview"
-    }
-    selected_model_key = st.selectbox("Select Gemini Model", list(model_options.keys()), index=1)
-    selected_model_name = model_options[selected_model_key]
+    selected_model_name = ""
+    client = None
+
+    if ai_provider == "Gemini":
+        genai.configure(api_key=os.getenv("GENAI_API_KEY"))
+        model_options = {
+             "Gemini 1.5 Flash": "models/gemini-flash-latest",
+             "Gemini 2.5 Flash": "models/gemini-2.5-flash",
+             
+        }
+        selected_model_key = st.selectbox("Select Gemini Model", list(model_options.keys()), index=1)
+        selected_model_name = model_options[selected_model_key]
+        st.info(f"✨ Using Google Gemini: {selected_model_key}")
+
+    elif ai_provider == "Groq":
+        client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        # You can add more Groq models here if needed
+        groq_models = {
+            "Llama 4 Scout 17B": "meta-llama/llama-4-scout-17b-16e-instruct"
+        }
+        selected_groq_key = st.selectbox("Select Groq Model", list(groq_models.keys()), index=0)
+        selected_model_name = groq_models[selected_groq_key]
+        st.info(f"🚀 Using Groq: {selected_groq_key}")
     
     uploaded_files = st.file_uploader(
         "Upload handwritten Urdu application image(s) or PDF(s):",
@@ -68,7 +91,7 @@ def handle_application_extractor():
     )
 
     if uploaded_files:
-        st.info("🔍 Processing files. Please wait...")
+        st.info(f"🔍 Processing {len(uploaded_files)} files in batches of {batch_size}. Please wait...")
         os.makedirs("temp_uploads", exist_ok=True)
 
         class FakeMessage:
@@ -84,52 +107,86 @@ def handle_application_extractor():
         file_data = asyncio.run(handle_files(message))
         all_extracted_data = []
 
-        for file in file_data:
+        for i, file in enumerate(file_data):
             if "error" in file:
                 st.error(f"❌ {file['file_name']}: {file['error']}")
                 continue
-
+            
+            # Batch Delay Logic: Wait 60s AFTER every 'batch_size' files are processed
+            # We check if we are at the start of a new batch (but not the very first file)
+            if i > 0 and i % batch_size == 0:
+                st.warning(f"⏳ Batch completed. Cooling down for 60 seconds before next batch...")
+                time.sleep(60)
+            
             path = file["path"]
             ext = os.path.splitext(path)[1].lower()
 
+            # Load image data
             if ext == ".pdf":
                 doc = fitz.open(path)
                 page_num = int(file["file_name"].split("Page ")[1]) - 1
                 pix = doc.load_page(page_num).get_pixmap()
                 image_bytes = pix.tobytes("png")
+                mime_type = "image/png"
             else:
                 with open(path, "rb") as f:
                     image_bytes = f.read()
+                mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
 
             st.info(f"Processing file: {file['file_name']}")
 
             prompt = (
-                "From this handwritten Urdu police application image, extract ONLY the following fields. "
-                "Translate the content into English if needed and follow fields Example stricly and return Plain Text only\n\n"
-                "Fields Example:\n"
-                """
-                Name: Furqan Ur Rehman (only applicant name)
-                Phone Number: 0313-0282098 (Mention in Last)
-                IMEI Number: 354882089097706 354882089094534
-                last Num Used: 0313-0282044 or None
-                Mobile Model: Motrolla Edge Plus
-                Other Property: None / Cash 3000 / wallet / bike  etc
-                Date Of Offence: 29.06.2025 only use . instead /
-                Time Of Offence: 08:00 PM
-                Type: Snatched / Theft / Lost
-                Police Station: ZamanTown"""
+                "Extract ONLY the following fields from this handwritten Urdu police application image. "
+                "Translate Urdu into English. Output PLAIN TEXT ONLY, no extra explanations, symbols, or guesses. "
+                "Use 'None' if a field is missing or unclear. Follow EXACT field names and order:\n\n"
+                "Name: <applicant name in english only leave hi father name>\n"
+                "Phone Number: <judge from context which phone number is active, or None>\n"
+                "IMEI Number: <all IMEIs separated by space or None>\n"
+                "Last Num Used: <judge from context which phone number was snatched , or None>\n"
+                "Mobile Model: <model or None>\n"
+                "Other Property: <property or None>\n"
+                "Date Of Offence: <DD.MM.YYYY or None>\n"
+                "Time Of Offence: <HH:MM AM/PM or None>\n"
+                "Type: <Snatched/Theft/Lost or None>\n"
+                "Police Station: <station name or None>\n\n"
+                
             )
 
-            check_rate_limit()
-            model = genai.GenerativeModel(selected_model_name)
 
+            raw_text = ""
             try:
-                response = model.generate_content(
-                    [prompt, {"mime_type": "image/jpeg", "data": image_bytes}]
-                )
-                raw_text = response.text
+                if ai_provider == "Gemini":
+                    model = genai.GenerativeModel(selected_model_name)
+                    response = model.generate_content(
+                        [prompt, {"mime_type": "image/jpeg", "data": image_bytes}]
+                    )
+                    raw_text = response.text
+                
+                elif ai_provider == "Groq":
+                    base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                    chat_completion = client.chat.completions.create(
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": prompt},
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:{mime_type};base64,{base64_image}",
+                                        },
+                                    },
+                                ],
+                            }
+                        ],
+                        model=selected_model_name,
+                        temperature=0.1,
+                        max_tokens=1024,
+                    )
+                    raw_text = chat_completion.choices[0].message.content
+
             except Exception as e:
-                st.error(f"❌ Gemini Vision error: {str(e)}")
+                st.error(f"❌ AI Error ({ai_provider}): {str(e)}")
                 continue
 
             st.text_area(f"📝 Extracted Text ({file['file_name']}):", raw_text, height=200)
@@ -156,6 +213,13 @@ def handle_excel_analyzer():
     st.title("📈 Excel Analyzer")
     st.info("Upload multiple Excel/CSV files to analyze Mobile Numbers & Addresses.")
 
+    # --- New Options ---
+    check_sim_info = st.toggle("Check Sim Info (Fetch Name/CNIC)", value=True)
+    
+    top_n = 15 # Default
+    if check_sim_info:
+        top_n = st.number_input("Top N Records to Analyze", min_value=1, value=15, step=1)
+
     uploaded_files = st.file_uploader(
         "Upload Excel/CSV files",
         type=["xlsx", "csv"],
@@ -175,7 +239,8 @@ def handle_excel_analyzer():
 
                 try:
                     st.write(f"⏳ Processing file: **{uploaded_file.name}** ...")
-                    analyzed_path = analyze_excel(temp_path)
+                    # Pass user options to analyzer
+                    analyzed_path = analyze_excel(temp_path, top_n=int(top_n), enable_lookup=check_sim_info)
                     st.success(f"✅ {uploaded_file.name} analyzed successfully!")
                     zipf.write(analyzed_path, arcname="(Analyzed)-" + uploaded_file.name)
                 except Exception as e:
@@ -406,21 +471,6 @@ def show_main_app():
                 data = get_vehicle_info(reg_number, api_category)
                 if data.get("error"): st.error(data["error"])
                 else: st.table(pd.DataFrame({"Attribute": list(data.keys()), "Value": list(data.values())}))
-
-# ---------- Rate Limiting ----------
-REQUEST_LIMIT = 5
-TIME_WINDOW = 120
-request_times = []
-
-def check_rate_limit():
-    global request_times
-    now = time.time()
-    request_times = [t for t in request_times if now - t < TIME_WINDOW]
-    if len(request_times) >= REQUEST_LIMIT:
-        wait_time = TIME_WINDOW - (now - request_times[0])
-        st.warning(f"⏳ Rate limit! Waiting {int(wait_time)}s...")
-        time.sleep(wait_time)
-    request_times.append(time.time())
 
 # ---------- Main App ----------
 def main():
