@@ -6,6 +6,7 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 from utils.table_header_finder import read_excel_auto
+from utils.api_clients import get_phone_info
 
 
 def analyze_excel(file_path, top_n=15, enable_lookup=True):
@@ -105,17 +106,6 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True):
     lookup_cache = {} # Store results to use in Call Logs later
 
     if enable_lookup:
-        # Get port from file or default
-        port = 8000
-        if os.path.exists(".uvicorn_port"):
-            try:
-                with open(".uvicorn_port", "r") as f:
-                    port = int(f.read().strip())
-            except:
-                pass
-        
-        api_url = f"http://127.0.0.1:{port}/get-info/"
-        
         # Iterate over top N
         for idx in mobile_summary.index[:top_n]:
             raw_num = str(mobile_summary.at[idx, "Mobile Number"]).strip()
@@ -123,30 +113,30 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True):
             query_num = "0" + raw_num
             
             try:
-                resp = requests.post(api_url, params={"phone_number": query_num}, timeout=5)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    # API returns a list of dicts if successful
-                    if isinstance(data, list) and len(data) > 0:
-                        record = data[0]
-                        # Try common keys
-                        name_val = record.get("name") or record.get("Name") or ""
-                        cnic_val = record.get("cnic") or record.get("CNIC") or ""
-                        addr_val = record.get("address") or record.get("Address") or ""
-                        
-                        mobile_summary.at[idx, "Name"] = name_val
-                        # Add space to prevent scientific notation in Excel
-                        mobile_summary.at[idx, "CNIC"] = " " + str(cnic_val) if cnic_val else ""
-                        mobile_summary.at[idx, "Address"] = addr_val
-                        
-                        # Cache for Call Logs
-                        lookup_cache[raw_num] = {
-                            "Name": name_val,
-                            "CNIC": " " + str(cnic_val) if cnic_val else "",
-                            "Address": addr_val
-                        }
+                # Direct function call (Serverless logic)
+                data = get_phone_info(query_num)
+                
+                # Check if we got a valid list of records
+                if isinstance(data, list) and len(data) > 0:
+                    record = data[0]
+                    # Try common keys
+                    name_val = record.get("name") or record.get("Name") or ""
+                    cnic_val = record.get("cnic") or record.get("CNIC") or ""
+                    addr_val = record.get("address") or record.get("Address") or ""
+                    
+                    mobile_summary.at[idx, "Name"] = name_val
+                    # Add space to prevent scientific notation in Excel
+                    mobile_summary.at[idx, "CNIC"] = " " + str(cnic_val) if cnic_val else ""
+                    mobile_summary.at[idx, "Address"] = addr_val
+                    
+                    # Cache for Call Logs
+                    lookup_cache[raw_num] = {
+                        "Name": name_val,
+                        "CNIC": " " + str(cnic_val) if cnic_val else "",
+                        "Address": addr_val
+                    }
             except Exception as e:
-                print(f"⚠️ API Check Failed for {query_num}: {e}")
+                print(f"⚠️ Lookup Failed for {query_num}: {e}")
 
     # Reorder columns: Mobile Number, Name, CNIC, Address, ... others
     cols = list(mobile_summary.columns)
