@@ -149,7 +149,15 @@ def handle_application_extractor():
                 "Date Of Offence: <DD.MM.YYYY or None>\n"
                 "Time Of Offence: <HH:MM AM/PM or None>\n"
                 "Type: <Snatched/Theft/Lost or None>\n"
-                "Police Station: < exmple: Ps-(name)   , name is range of sho like landhi korangi zamantown shahfaisal al-flah etc follow on this pattern for ps name in roman urdu only>\n\n"
+                "Police Station:<Ps-name or None>\n" 
+                                """- Search for Urdu keywords like: "تھانہ", "بخدمت", "SHO", "پولیس اسٹیشن".
+                                    - The police station name is usually written at the very start of the application
+                                    (e.g., بخدمت تھانہ زمان ٹاؤن).
+                                    - Extract ONLY the station name that appears immediately after these keywords.
+                                    - Translate the station name into English.
+                                    - Remove words like: SHO, بخدمت, جناب, پولیس اسٹیشن.
+                                    - Output format: Ps-<Station Name>
+                                    - If no station name is clearly written, write None."""
                 
             )
 
