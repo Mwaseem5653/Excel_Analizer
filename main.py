@@ -149,7 +149,7 @@ def handle_application_extractor():
                 "Date Of Offence: <DD.MM.YYYY or None>\n"
                 "Time Of Offence: <HH:MM AM/PM or None>\n"
                 "Type: <Snatched/Theft/Lost or None>\n"
-                "Police Station: < exmple: Ps-(name: Sho range name like landhi , shahfaisal , korangi , awami , alfalah) >\n\n"
+                "Police Station: < exmple: Ps-(name)   , name is range of sho like landhi korangi zamantown shahfaisal al-flah etc follow on this pattern for ps name in roman urdu only>\n\n"
                 
             )
 
