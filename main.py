@@ -22,9 +22,7 @@ SESSION_TEMP_DIR = os.path.join("temp_uploads", st.session_state.session_id)
 os.makedirs(SESSION_TEMP_DIR, exist_ok=True)
 
 # ---------- Cleanup ----------
-def cleanup_session_files():
-    if os.path.exists(SESSION_TEMP_DIR):
-        shutil.rmtree(SESSION_TEMP_DIR, ignore_errors=True)
+# Cleanup system removed as requested
 
 def normalize_phone_number(num: str):
     num = num.strip()
@@ -76,7 +74,6 @@ def handle_application_extractor():
 
     elif ai_provider == "Groq":
         client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-        # You can add more Groq models here if needed
         groq_models = {
             "Llama 4 Scout 17B": "meta-llama/llama-4-scout-17b-16e-instruct"
         }
@@ -84,127 +81,167 @@ def handle_application_extractor():
         selected_model_name = groq_models[selected_groq_key]
         st.info(f"🚀 Using Groq: {selected_groq_key}")
     
+    # Uploader Key for clearing
+    if "uploader_key_app" not in st.session_state:
+        st.session_state.uploader_key_app = 0
+    
     uploaded_files = st.file_uploader(
         "Upload handwritten Urdu application image(s) or PDF(s):",
         type=["jpg", "jpeg", "png", "pdf"],
-        accept_multiple_files=True
+        accept_multiple_files=True,
+        key=f"app_uploader_{st.session_state.uploader_key_app}"
     )
 
     if uploaded_files:
-        st.info(f"🔍 Processing {len(uploaded_files)} files in batches of {batch_size}. Please wait...")
-        os.makedirs("temp_uploads", exist_ok=True)
+        # --- Fair Token Logic ---
+        if 'app_paid_files' not in st.session_state:
+            st.session_state.app_paid_files = set()
+        
+        # Identify files not yet paid for in this session
+        new_files = [f for f in uploaded_files if f.name not in st.session_state.app_paid_files]
+        
+        if new_files:
+            total_processing_units = 0
+            for f in new_files:
+                if f.name.lower().endswith(".pdf"):
+                    try:
+                        pdf_bytes = f.read()
+                        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+                             total_processing_units += doc.page_count
+                        f.seek(0)
+                    except Exception as e:
+                        st.warning(f"Could not count pages for {f.name}, counting as 1.")
+                        total_processing_units += 1
+                        f.seek(0)
+                else:
+                    total_processing_units += 1
 
-        class FakeMessage:
-            def __init__(self, files):
-                self.elements = []
-                for f in files:
-                    temp_path = os.path.join("temp_uploads", f.name)
-                    with open(temp_path, "wb") as out_f:
-                        out_f.write(f.getbuffer())
-                    self.elements.append(type("Element", (), {"path": temp_path})())
-
-        message = FakeMessage(uploaded_files)
-        file_data = asyncio.run(handle_files(message))
-        all_extracted_data = []
-
-        for i, file in enumerate(file_data):
-            if "error" in file:
-                st.error(f"❌ {file['file_name']}: {file['error']}")
-                continue
+            cost_per_unit = 5
+            total_cost = total_processing_units * cost_per_unit
             
-            # Batch Delay Logic: Wait 60s AFTER every 'batch_size' files are processed
-            # We check if we are at the start of a new batch (but not the very first file)
-            if i > 0 and i % batch_size == 0:
-                st.warning(f"⏳ Batch completed. Cooling down for 60 seconds before next batch...")
-                time.sleep(60)
+            current_tokens = auth.get_tokens()
+            if current_tokens < total_cost:
+                st.error(f"⚠️ Insufficient Tokens! You need {total_cost} tokens ({total_processing_units} pages/images) but have {current_tokens}.")
+                return
             
-            path = file["path"]
-            ext = os.path.splitext(path)[1].lower()
-
-            # Load image data
-            if ext == ".pdf":
-                doc = fitz.open(path)
-                page_num = int(file["file_name"].split("Page ")[1]) - 1
-                pix = doc.load_page(page_num).get_pixmap()
-                image_bytes = pix.tobytes("png")
-                mime_type = "image/png"
+            if auth.deduct_tokens(total_cost):
+                for f in new_files:
+                    st.session_state.app_paid_files.add(f.name)
+                st.success(f"💰 {total_cost} tokens deducted for {total_processing_units} pages/images.")
             else:
-                with open(path, "rb") as f:
-                    image_bytes = f.read()
-                mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
+                st.error("Token deduction failed.")
+                return
 
-            st.info(f"Processing file: {file['file_name']}")
+        # --- Processing Logic (Auto-run) ---
+        # Check if already processed this exact batch to avoid re-running on widget changes
+        current_batch_ids = [f.name + str(f.size) for f in uploaded_files]
+        if st.session_state.get('app_last_batch') != current_batch_ids:
+            
+            # Clear previous results to avoid showing stale download button
+            if 'app_extractor_result' in st.session_state:
+                del st.session_state['app_extractor_result']
 
-            prompt = (
-                "Extract ONLY the following fields from this handwritten Urdu police application image. "
-                "Output PLAIN TEXT ONLY, "
-                "Follow EXACT field names and order:\n\n"
-                "only return following fields\n"
-                "Name: <applicant name in english only without father name>\n"
-                "Phone Number: <judge from context which phone number is active, or None>\n"
-                "IMEI Number: <all IMEIs separated by space or None>\n"
-                "Last Num Used: <judge from context which phone number was snatched , or None>\n"
-                "Mobile Model: <models name or None>\n"
-                "Other Property: <snatched properties like cash bike wallet etc or None>\n"
-                "Date Of Offence: <DD.MM.YYYY or None>\n"
-                "Time Of Offence: <HH:MM AM/PM or None>\n"
-                "Type: <Snatched/Theft/Lost or None>\n"
-                "Police Station: < exmple: Ps-(name)   , name is range of sho like landhi korangi zamantown shahfaisal al-flah etc follow on this pattern for ps name in roman urdu only>\n\n"
+            st.info(f"🔍 Processing {len(uploaded_files)} files...")
+            os.makedirs("temp_uploads", exist_ok=True)
+
+            class FakeMessage:
+                def __init__(self, files):
+                    self.elements = []
+                    for f in files:
+                        temp_path = os.path.join("temp_uploads", f.name)
+                        with open(temp_path, "wb") as out_f:
+                            out_f.write(f.getbuffer())
+                        self.elements.append(type("Element", (), {"path": temp_path})())
+
+            message = FakeMessage(uploaded_files)
+            file_data = asyncio.run(handle_files(message))
+            all_extracted_data = []
+
+            for i, file in enumerate(file_data):
+                if "error" in file:
+                    st.error(f"❌ {file['file_name']}: {file['error']}")
+                    continue
                 
-            )
-
-
-            raw_text = ""
-            try:
-                if ai_provider == "Gemini":
-                    model = genai.GenerativeModel(selected_model_name)
-                    response = model.generate_content(
-                        [prompt, {"mime_type": "image/jpeg", "data": image_bytes}]
-                    )
-                    raw_text = response.text
+                if i > 0 and i % batch_size == 0:
+                    st.warning(f"⏳ Batch completed. Cooling down for 60 seconds...")
+                    time.sleep(60)
                 
-                elif ai_provider == "Groq":
-                    base64_image = base64.b64encode(image_bytes).decode('utf-8')
-                    chat_completion = client.chat.completions.create(
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": prompt},
-                                    {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:{mime_type};base64,{base64_image}",
-                                        },
-                                    },
-                                ],
-                            }
-                        ],
-                        model=selected_model_name,
-                        temperature=0.1,
-                        max_tokens=1024,
-                    )
-                    raw_text = chat_completion.choices[0].message.content
+                path = file["path"]
+                ext = os.path.splitext(path)[1].lower()
 
-            except Exception as e:
-                st.error(f"❌ AI Error ({ai_provider}): {str(e)}")
-                continue
+                if ext == ".pdf":
+                    doc = fitz.open(path)
+                    page_num = int(file["file_name"].split("Page ")[1]) - 1
+                    pix = doc.load_page(page_num).get_pixmap()
+                    image_bytes = pix.tobytes("png")
+                    mime_type = "image/png"
+                else:
+                    with open(path, "rb") as f:
+                        image_bytes = f.read()
+                    mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
 
-            st.text_area(f"📝 Extracted Text ({file['file_name']}):", raw_text, height=200)
-            extracted_data = extract_fields_from_text(raw_text)
-            all_extracted_data.append(extracted_data)
+                st.info(f"Processing file: {file['file_name']}")
 
-        excel_path = save_to_excel(all_extracted_data)
-        with open(excel_path, "rb") as f:
+                prompt = (
+                    "Extract ONLY the following fields from this handwritten Urdu police application image. "
+                    "Output PLAIN TEXT ONLY, "
+                    "Follow EXACT field names and order:\n\n"
+                    "only return following fields\n"
+                    "Name: <applicant name in english only without father name>\n"
+                    "Phone Number: <judge from context which phone number is active, or None>\n"
+                    "IMEI Number: <all IMEIs separated by space or None>\n"
+                    "Last Num Used: <judge from context which phone number was snatched , or None>\n"
+                    "Mobile Model: <models name or None>\n"
+                    "Other Property: <snatched properties like cash bike wallet etc or None>\n"
+                    "Date Of Offence: <DD.MM.YYYY or None>\n"
+                    "Time Of Offence: <HH:MM AM/PM or None>\n"
+                    "Type: <Snatched/Theft/Lost or None>\n"
+                    "Police Station: < Example Ps-Zamatown , Ps-Korangi , Ps-Landhi , Ps-Shahfaisal , Ps-Alflah etc>\n\n"
+                )
+
+                raw_text = ""
+                try:
+                    if ai_provider == "Gemini":
+                        model = genai.GenerativeModel(selected_model_name)
+                        response = model.generate_content(
+                            [prompt, {"mime_type": "image/jpeg", "data": image_bytes}]
+                        )
+                        raw_text = response.text
+                    elif ai_provider == "Groq":
+                        base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                        chat_completion = client.chat.completions.create(
+                            messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}]}],
+                            model=selected_model_name, temperature=0.1, max_tokens=1024
+                        )
+                        raw_text = chat_completion.choices[0].message.content
+                except Exception as e:
+                    st.error(f"❌ AI Error: {str(e)}")
+                    continue
+
+                st.text_area(f"📝 Extracted Text ({file['file_name']}):", raw_text, height=150)
+                extracted_data = extract_fields_from_text(raw_text)
+                all_extracted_data.append(extracted_data)
+
+            excel_path = save_to_excel(all_extracted_data)
+            with open(excel_path, "rb") as f:
+                 st.session_state['app_extractor_result'] = f.read()
+            
+            st.session_state['app_last_batch'] = current_batch_ids
+            st.success("Extraction Complete!")
+
+    else:
+        st.session_state['app_last_batch'] = []
+
+    # --- Download ---
+    if 'app_extractor_result' in st.session_state and uploaded_files:
+        current_batch_ids = [f.name + str(f.size) for f in uploaded_files]
+        if st.session_state.get('app_last_batch') == current_batch_ids:
             st.download_button(
-                label="📥 Download Extracted Excel",
-                data=f,
+                label="📥 Download Extracted Data (Excel)",
+                data=st.session_state['app_extractor_result'],
                 file_name="extracted_data.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                
             )
-        
-        cleanup_session_files()
 def handle_excel_analyzer():
     # Lazy imports
     import zipfile
@@ -215,47 +252,102 @@ def handle_excel_analyzer():
     st.info("Upload multiple Excel/CSV files to analyze Mobile Numbers & Addresses.")
 
     # --- New Options ---
-    check_sim_info = st.toggle("Check Sim Info (Fetch Name/CNIC)", value=True)
+    col_opt1, col_opt2 = st.columns(2)
+    with col_opt1:
+        check_sim_info = st.toggle("Check Sim Info (Fetch Name/CNIC)", value=True)
+    
+    # Eyecon Toggle - For Admins or Users with explicit permission
+    check_eyecon_info = False
+    user_services = auth.get_user_services()
+    if "Admin" in user_services or "Eyecon Info" in user_services:
+        with col_opt2:
+            check_eyecon_info = st.toggle("Check Eyecon Info", value=False)
     
     top_n = 15 # Default
+    eyecon_top_n = 15 # Default
+
     if check_sim_info:
-        top_n = st.number_input("Top N Records to Analyze", min_value=1, value=15, step=1)
+        top_n = st.number_input("Top N Records to Analyze (SIM Info)", min_value=1, value=15, step=1)
+    
+    if check_eyecon_info:
+        eyecon_top_n = st.number_input("Top N Records for Eyecon", min_value=1, value=15, step=1)
+
+    # Uploader Key for clearing
+    if "uploader_key_analyzer" not in st.session_state:
+        st.session_state.uploader_key_analyzer = 0
 
     uploaded_files = st.file_uploader(
         "Upload Excel/CSV files",
         type=["xlsx", "csv"],
         accept_multiple_files=True,
-        key="analyzer_uploader"
+        key=f"analyzer_uploader_{st.session_state.uploader_key_analyzer}"
     )
 
     if uploaded_files:
-        os.makedirs("temp_uploads", exist_ok=True)
-        zip_buffer = io.BytesIO()
+        # --- Fair Token Logic ---
+        if 'analyzer_paid_files' not in st.session_state:
+            st.session_state.analyzer_paid_files = set()
+        
+        new_files = [f for f in uploaded_files if f.name not in st.session_state.analyzer_paid_files]
+        
+        if new_files:
+            cost_per_file = 15
+            total_cost = len(new_files) * cost_per_file
+            
+            current_tokens = auth.get_tokens()
+            if current_tokens < total_cost:
+                 st.error(f"⚠️ Insufficient Tokens! You need {total_cost} but have {current_tokens}.")
+                 return
 
-        with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for uploaded_file in uploaded_files:
-                temp_path = os.path.join("temp_uploads", uploaded_file.name)
-                with open(temp_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+            if auth.deduct_tokens(total_cost):
+                for f in new_files:
+                    st.session_state.analyzer_paid_files.add(f.name)
+                st.success(f"💰 {total_cost} tokens deducted for {len(new_files)} new files.")
+            else:
+                 st.error("Token deduction failed.")
+                 return
 
-                try:
-                    st.write(f"⏳ Processing file: **{uploaded_file.name}** ...")
-                    # Pass user options to analyzer
-                    analyzed_path = analyze_excel(temp_path, top_n=int(top_n), enable_lookup=check_sim_info)
-                    st.success(f"✅ {uploaded_file.name} analyzed successfully!")
-                    zipf.write(analyzed_path, arcname="(Analyzed)-" + uploaded_file.name)
-                except Exception as e:
-                    st.error(f"❌ Error in {uploaded_file.name}: {str(e)}")
+        # --- Processing Logic (Auto-run) ---
+        current_batch_ids = [f.name + str(f.size) for f in uploaded_files]
+        if st.session_state.get('analyzer_last_batch') != current_batch_ids:
+            
+             os.makedirs("temp_uploads", exist_ok=True)
+             zip_buffer = io.BytesIO()
 
-        zip_buffer.seek(0)
+             with zipfile.ZipFile(zip_buffer, "w") as zipf:
+                for uploaded_file in uploaded_files:
+                    temp_path = os.path.join("temp_uploads", uploaded_file.name)
+                    with open(temp_path, "wb") as f:
+                        f.write(uploaded_file.getbuffer())
+
+                    try:
+                        st.write(f"⏳ Processing file: **{uploaded_file.name}** ...")
+                        # Pass user options to analyzer
+                        analyzed_path = analyze_excel(
+                            temp_path, 
+                            top_n=int(top_n), 
+                            enable_lookup=check_sim_info,
+                            enable_eyecon_lookup=check_eyecon_info,
+                            eyecon_top_n=int(eyecon_top_n)
+                        )
+                        st.success(f"✅ {uploaded_file.name} analyzed successfully!")
+                        zipf.write(analyzed_path, arcname="(Analyzed)-" + uploaded_file.name)
+                    except Exception as e:
+                        st.error(f"❌ Error in {uploaded_file.name}: {str(e)}")
+
+             zip_buffer.seek(0)
+             st.session_state['excel_analyzer_result'] = zip_buffer.getvalue()
+             st.session_state['analyzer_last_batch'] = current_batch_ids
+             st.success("Analysis Complete!")
+
+    # Show Download
+    if 'excel_analyzer_result' in st.session_state and uploaded_files:
         st.download_button(
             label="📦 Download All Analyzed Files (ZIP)",
-            data=zip_buffer,
+            data=st.session_state['excel_analyzer_result'],
             file_name="Analyzed_Files.zip",
             mime="application/zip"
-            
-        )
-    cleanup_session_files() 
+        ) 
 def handle_pta_services():
     import io
     import pandas as pd
@@ -275,7 +367,23 @@ def handle_pta_services():
                     phone_numbers.append(normalized)
 
             phone_numbers = phone_numbers[:10]
+            
+            # Token Check
             if phone_numbers:
+                cost_per_number = 10
+                total_cost = len(phone_numbers) * cost_per_number
+                
+                current_tokens = auth.get_tokens()
+                if current_tokens < total_cost:
+                    st.error(f"⚠️ Insufficient Tokens! You need {total_cost} tokens but have {current_tokens}. Please top up.")
+                    return # Stop execution
+
+                if not auth.deduct_tokens(total_cost):
+                     st.error("Transaction failed during token deduction.")
+                     return
+
+                st.success(f"💰 Deducted {total_cost} tokens.")
+
                 try:
                     excel_path_dummy, lookup_results_data = find_operators_and_download(phone_numbers) 
                     st.subheader("Processing Results")
@@ -481,6 +589,11 @@ def main():
 
     with st.sidebar:
         st.image("Assets/app_icon.png", width=100)
+        
+        # Display Tokens
+        current_tokens = auth.get_tokens()
+        st.metric("💰 Tokens", current_tokens)
+        
         user_services = auth.get_user_services()
         service_map = {
             "Application Extractor": "app", "Excel Analyzer": "analyzer",

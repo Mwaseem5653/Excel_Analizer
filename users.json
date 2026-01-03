@@ -8,17 +8,8 @@
             "CDR Format",
             "Admin",
             "Vehicle and Mobile"
-            
-        ]
-    },
-    "m.waseem5196@gmail.com": {
-        "password": "waseemkhan",
-        "services": [
-            "Excel Analyzer",
-            "CDR Format",
-            "Vehicle and Mobile",
-            "PTA Services"
-        ]
+        ],
+        "tokens": 25
     },
     "dicbranch": {
         "password": "dicbranch",
@@ -27,7 +18,8 @@
             "CDR Format",
             "Vehicle and Mobile",
             "PTA Services"
-        ]
+        ],
+        "tokens": 0
     },
     "noorahmed": {
         "password": "noorahmed",
@@ -38,7 +30,8 @@
             "CDR Format",
             "Admin",
             "Vehicle and Mobile"
-        ]
+        ],
+        "tokens": 0
     },
     "diclandhi": {
         "password": "diclandhi",
@@ -47,7 +40,8 @@
             "CDR Format",
             "Vehicle and Mobile",
             "PTA Services"
-        ]
+        ],
+        "tokens": 0
     },
     "ameenhazariya": {
         "password": "ameenhazariya",
@@ -55,7 +49,19 @@
             "Excel Analyzer",
             "CDR Format",
             "Vehicle and Mobile"
+        ],
+        "tokens": 0
+    },
+    "m.waseem5196@gmail.com": {
+        "password": "waseemkhan",
+        "tokens": 100,
+        "services": [
+            "Vehicle and Mobile",
+            "Application Extractor",
+            "PTA Services",
+            "Excel Analyzer",
+            "Eyecon Info",
+            "CDR Format"
         ]
     }
-
 }

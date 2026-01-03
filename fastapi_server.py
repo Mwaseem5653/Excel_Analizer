@@ -1,16 +1,54 @@
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import httpx
 import os
 import asyncio # Add asyncio import
 import uvicorn # Add uvicorn import
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
+
+# Allow frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 async def home():
     return {"message": "FastAPI server is running on Render!"}
+
+@app.get("/lookup")
+def lookup(number: str, code: str = "92"):  # default 92
+    rapid_api_key = os.getenv("RAPID_API_KEY")
+    url = "https://eyecon.p.rapidapi.com/api/v1/search"
+
+    headers = {
+        "x-rapidapi-key": rapid_api_key,
+        "x-rapidapi-host": "eyecon.p.rapidapi.com"
+    }
+
+    params = {
+        "code": code,
+        "number": number
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        data = response.json()
+
+        if not data.get("status"):
+            return {"status": False, "message": "No record found"}
+
+        return data
+    except Exception as e:
+        return {"status": False, "message": str(e)}
 
 @app.post("/get-info/")
 async def get_phone_info(phone_number: str):

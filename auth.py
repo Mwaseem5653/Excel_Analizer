@@ -11,6 +11,7 @@ def load_users():
         default_users = {
             "jerrynaeem19@gmail.com": {
                 "password": "Pakistan1122@",
+                "tokens": 100, # Default tokens for admin
                 "services": [
                     "Application Extractor",
                     "Excel Analyzer",
@@ -27,7 +28,18 @@ def load_users():
         return default_users
     else:
         with open(USERS_FILE, 'r') as f:
-            return json.load(f)
+            users = json.load(f)
+            # Migration: Ensure all users have a 'tokens' field
+            is_modified = False
+            for email in users:
+                if "tokens" not in users[email]:
+                    users[email]["tokens"] = 0
+                    is_modified = True
+            
+            if is_modified:
+                with open(USERS_FILE, 'w') as f:
+                    json.dump(users, f, indent=4)
+            return users
 
 def save_users():
     """Saves the current USERS dictionary to the JSON file."""
@@ -63,6 +75,38 @@ def get_user_services():
         return USERS.get(email, {}).get("services", [])
     return []
 
+def get_tokens(email=None):
+    """Returns the token balance for a user (current user if email is None)."""
+    if email is None:
+        if is_logged_in():
+            email = st.session_state["email"]
+        else:
+            return 0
+    return USERS.get(email, {}).get("tokens", 0)
+
+def add_tokens(email, amount):
+    """Adds tokens to a user's balance."""
+    if email in USERS:
+        USERS[email]["tokens"] = USERS[email].get("tokens", 0) + amount
+        save_users()
+        return True
+    return False
+
+def deduct_tokens(amount, email=None):
+    """Deducts tokens from a user's balance if sufficient funds exist."""
+    if email is None:
+        if is_logged_in():
+            email = st.session_state["email"]
+        else:
+            return False
+            
+    current_tokens = USERS.get(email, {}).get("tokens", 0)
+    if current_tokens >= amount:
+        USERS[email]["tokens"] = current_tokens - amount
+        save_users()
+        return True
+    return False
+
 def logout():
     """Logs the user out and clears the session."""
     for key in list(st.session_state.keys()):
@@ -74,10 +118,27 @@ def admin_section():
     st.title("Admin Section")
     st.subheader("Manage Users and Permissions")
 
+    # --- Token Management ---
+    st.write("### 💰 Issue Tokens")
+    with st.form("issue_tokens_form"):
+        user_to_issue = st.selectbox("Select User", list(USERS.keys()))
+        tokens_to_add = st.number_input("Tokens Amount", min_value=1, value=100, step=10)
+        
+        issue_submitted = st.form_submit_button("Issue Tokens")
+        if issue_submitted:
+            if add_tokens(user_to_issue, tokens_to_add):
+                st.success(f"Successfully added {tokens_to_add} tokens to {user_to_issue}")
+                st.rerun()
+            else:
+                st.error("Failed to add tokens.")
+    
+    st.write("---")
+
     # Display current users
     st.write("### Current Users")
     for email, data in USERS.items():
         st.write(f"**Email:** {email}")
+        st.write(f"**Tokens:** {data.get('tokens', 0)}")
         st.write(f"**Services:** {', '.join(data['services'])}")
         st.write("---")
 
@@ -89,15 +150,18 @@ def admin_section():
         
         all_services = [
             "Application Extractor", "Excel Analyzer", "PTA Services", 
-            "CDR Format", "Vehicle and Mobile", "Admin", "Settings / Future Tools"
+            "CDR Format", "Vehicle and Mobile", "Admin", "Settings / Future Tools",
+            "Eyecon Info"
         ]
         selected_services = st.multiselect("Select services for the new user", all_services)
+        initial_tokens = st.number_input("Initial Tokens", min_value=0, value=0)
         
         submitted = st.form_submit_button("Add User")
         if submitted:
             if new_email and new_password and selected_services:
                 USERS[new_email] = {
                     "password": new_password,
+                    "tokens": initial_tokens,
                     "services": selected_services
                 }
                 save_users() # Save changes to the file

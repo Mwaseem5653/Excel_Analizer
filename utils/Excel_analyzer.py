@@ -6,10 +6,10 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 from utils.table_header_finder import read_excel_auto
-from utils.api_clients import get_phone_info
+from utils.api_clients import get_phone_info, get_eyecon_info
 
 
-def analyze_excel(file_path, top_n=15, enable_lookup=True):
+def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=False, eyecon_top_n=15):
 
     # -------------------- Read Excel --------------------
     file_ext = os.path.splitext(file_path)[1].lower()
@@ -99,13 +99,13 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True):
     }).sort_values("Count", ascending=False)
 
     # -------------------- FETCH API INFO --------------------
-    mobile_summary["Name"] = ""
-    mobile_summary["CNIC"] = ""
-    mobile_summary["Address"] = ""
-    
     lookup_cache = {} # Store results to use in Call Logs later
 
     if enable_lookup:
+        mobile_summary["Name"] = ""
+        mobile_summary["CNIC"] = ""
+        mobile_summary["Address"] = ""
+
         # Iterate over top N
         for idx in mobile_summary.index[:top_n]:
             raw_num = str(mobile_summary.at[idx, "Mobile Number"]).strip()
@@ -130,19 +130,84 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True):
                     mobile_summary.at[idx, "Address"] = addr_val
                     
                     # Cache for Call Logs
-                    lookup_cache[raw_num] = {
-                        "Name": name_val,
-                        "CNIC": " " + str(cnic_val) if cnic_val else "",
-                        "Address": addr_val
-                    }
+                    if raw_num not in lookup_cache:
+                         lookup_cache[raw_num] = {}
+                    
+                    lookup_cache[raw_num]["Name"] = name_val
+                    lookup_cache[raw_num]["CNIC"] = " " + str(cnic_val) if cnic_val else ""
+                    lookup_cache[raw_num]["Address"] = addr_val
+
             except Exception as e:
                 print(f"⚠️ Lookup Failed for {query_num}: {e}")
 
-    # Reorder columns: Mobile Number, Name, CNIC, Address, ... others
-    cols = list(mobile_summary.columns)
-    # Ensure specific order
-    desired_order = ["Mobile Number", "Name", "CNIC", "Address", "Starting Date", "Ending Date", "Count"]
-    mobile_summary = mobile_summary[desired_order]
+    # -------------------- FETCH EYECON INFO --------------------
+    eyecon_cache = {}
+    if enable_eyecon_lookup:
+        mobile_summary["Eyecon Name"] = ""
+        
+        for idx in mobile_summary.index[:eyecon_top_n]:
+            raw_num = str(mobile_summary.at[idx, "Mobile Number"]).strip()
+            
+            try:
+                data = get_eyecon_info(raw_num)
+                print(f"Eyecon API Response for {raw_num}: {data}") # Console Log
+                
+                # Check for quota or subscription errors
+                if "message" in data and ("quota" in data["message"].lower() or "subscribe" in data["message"].lower()):
+                    error_msg = "Quota Exceeded / Sub Req"
+                    eyecon_cache[raw_num] = error_msg
+                    mobile_summary.at[idx, "Eyecon Name"] = error_msg
+                    continue
+
+                # Parse response
+                eyecon_name = ""
+                all_names = set()
+
+                if not data.get("error") and data.get("status"):
+                    # Helper to extract from dict
+                    def extract_names(d):
+                        fname = d.get("fullName") or d.get("name")
+                        if fname: all_names.add(fname)
+                        
+                        others = d.get("otherNames", [])
+                        if isinstance(others, list):
+                            for o in others:
+                                if isinstance(o, dict):
+                                    n = o.get("name")
+                                    if n: all_names.add(n)
+                                elif isinstance(o, str):
+                                    all_names.add(o)
+
+                    # Check top level
+                    extract_names(data)
+                    
+                    # Check nested data if present
+                    if isinstance(data.get("data"), dict):
+                        extract_names(data.get("data"))
+
+                if all_names:
+                    eyecon_name = "\n".join(list(all_names))
+
+                if eyecon_name:
+                    eyecon_cache[raw_num] = eyecon_name
+                    mobile_summary.at[idx, "Eyecon Name"] = eyecon_name
+                    
+            except Exception as e:
+                print(f"⚠️ Eyecon Lookup Failed for {raw_num}: {e}")
+
+    # Reorder columns: Mobile Number, [Eyecon Name], [Name, CNIC, Address], ... others
+    base_mob_cols = ["Mobile Number"]
+    if enable_eyecon_lookup:
+        base_mob_cols.append("Eyecon Name")
+    if enable_lookup:
+        base_mob_cols.extend(["Name", "CNIC", "Address"])
+        
+    other_mob_cols = [c for c in mobile_summary.columns if c not in base_mob_cols]
+    desired_order = base_mob_cols + ["Starting Date", "Ending Date", "Count"] 
+    # Filter to ensure all exist
+    final_order = [c for c in desired_order if c in mobile_summary.columns]
+    
+    mobile_summary = mobile_summary[final_order]
 
     # -------------------- ADDRESS SUMMARY --------------------
     address_summary = None
@@ -225,13 +290,20 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True):
         )
 
         # -------------------- INJECT API INFO INTO CALL LOGS --------------------
-        summary["Name"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("Name", ""))
-        summary["CNIC"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("CNIC", ""))
-        summary["Address"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("Address", ""))
+        base_cols = ["B-party"]
+        
+        if enable_eyecon_lookup:
+            summary["Eyecon Name"] = summary["B-party"].map(lambda x: eyecon_cache.get(str(x), ""))
+            base_cols.append("Eyecon Name")
+            
+        if enable_lookup:
+            summary["Name"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("Name", ""))
+            summary["CNIC"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("CNIC", ""))
+            summary["Address"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("Address", ""))
+            base_cols.extend(["Name", "CNIC", "Address"])
 
-        # Reorder Summary Columns: B-party, Name, CNIC, Address, ... rest
+        # Reorder Summary Columns: B-party, [Eyecon Name], [Name, CNIC, Address], ... rest
         sum_cols = list(summary.columns)
-        base_cols = ["B-party", "Name", "CNIC", "Address"]
         other_cols = [c for c in sum_cols if c not in base_cols]
         summary = summary[base_cols + other_cols]
 
@@ -243,13 +315,13 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True):
     out_path = os.path.join(out_dir, "analyzed_excel_formatted.xlsx")
 
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
-        mobile_summary.to_excel(writer, "Mobile Numbers", index=False)
+        mobile_summary.to_excel(writer, sheet_name="Mobile Numbers", index=False)
         if address_summary is not None:
-            address_summary.to_excel(writer, "Addresses", index=False)
+            address_summary.to_excel(writer, sheet_name="Addresses", index=False)
         if imei_summary is not None:
-            imei_summary.to_excel(writer, "IMEI Numbers", index=False)
-        summary.to_excel(writer, "Call Logs", index=False)
-        formatted_df.to_excel(writer, "Formatted Data", index=False)
+            imei_summary.to_excel(writer, sheet_name="IMEI Numbers", index=False)
+        summary.to_excel(writer, sheet_name="Call Logs", index=False)
+        formatted_df.to_excel(writer, sheet_name="Formatted Data", index=False)
 
     # -------------------- FORMAT --------------------
     wb = load_workbook(out_path)
@@ -257,10 +329,13 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True):
     bold = Font(bold=True)
 
     for ws in wb.worksheets:
+        eyecon_col_index = None
         for c in ws[1]:
             c.fill = fill
             c.font = bold
             c.alignment = Alignment(horizontal="center")
+            if c.value == "Eyecon Name":
+                eyecon_col_index = c.column
 
         for col in ws.columns:
             col_letter = get_column_letter(col[0].column)
@@ -273,6 +348,15 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True):
             ws.column_dimensions[col_letter].width = max(
                 len(str(cell.value)) if cell.value else 10 for cell in col
             ) + 2
+
+        # Specific formatting for Eyecon Name
+        if eyecon_col_index:
+            col_letter = get_column_letter(eyecon_col_index)
+            ws.column_dimensions[col_letter].width = 30 # Fixed width for wrapping
+            for cell in ws[col_letter]:
+                 # Keep existing horizontal/vertical but enable wrap_text
+                 cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
     ws = wb["Formatted Data"]
 
     for col in ws.columns:

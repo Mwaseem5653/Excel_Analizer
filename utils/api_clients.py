@@ -98,3 +98,31 @@ async def get_providers_proxy(accountNumber: str):
             return response.json()
         except Exception as e:
             return {"error": str(e)}
+
+def get_eyecon_info(number: str, code: str = "92"):
+    rapid_api_key = os.getenv("RAPID_API_KEY")
+    if not rapid_api_key:
+        return {"error": "RAPID_API_KEY not found in environment variables."}
+
+    url = "https://eyecon.p.rapidapi.com/api/v1/search"
+    headers = {
+        "x-rapidapi-key": rapid_api_key,
+        "x-rapidapi-host": "eyecon.p.rapidapi.com"
+    }
+    params = {
+        "code": code,
+        "number": number
+    }
+
+    try:
+        response = requests.get(url, headers=headers, params=params, timeout=10)
+        data = response.json()
+        
+        # Return data even if status is false/missing so we can debug the error (e.g., Auth failure, Quota)
+        if not data.get("status"):
+             # If no error key, maybe add one for consistency, but for now just return raw data
+             pass
+            
+        return data
+    except Exception as e:
+        return {"error": str(e)}
