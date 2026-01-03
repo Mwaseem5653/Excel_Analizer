@@ -75,7 +75,7 @@ def handle_application_extractor():
     elif ai_provider == "Groq":
         client = Groq(api_key=os.getenv("GROQ_API_KEY"))
         groq_models = {
-            "Llama 4 Scout 17B": "meta-llama/llama-4-scout-17b-16e-instruct"
+            "Llama 4 Scout 17B": "meta-llama/llama-4-maverick-17b-128e-instruct"
         }
         selected_groq_key = st.selectbox("Select Groq Model", list(groq_models.keys()), index=0)
         selected_model_name = groq_models[selected_groq_key]
