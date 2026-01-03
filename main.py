@@ -116,7 +116,7 @@ def handle_application_extractor():
                 else:
                     total_processing_units += 1
 
-            cost_per_unit = 5
+            cost_per_unit = 2
             total_cost = total_processing_units * cost_per_unit
             
             current_tokens = auth.get_tokens()
@@ -375,7 +375,7 @@ def handle_pta_services():
             
             # Token Check
             if phone_numbers:
-                cost_per_number = 10
+                cost_per_number = 4
                 total_cost = len(phone_numbers) * cost_per_number
                 
                 current_tokens = auth.get_tokens()
