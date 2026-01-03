@@ -340,14 +340,19 @@ def handle_excel_analyzer():
              st.session_state['analyzer_last_batch'] = current_batch_ids
              st.success("Analysis Complete!")
 
+    else:
+        st.session_state['analyzer_last_batch'] = []
+
     # Show Download
     if 'excel_analyzer_result' in st.session_state and uploaded_files:
-        st.download_button(
-            label="📦 Download All Analyzed Files (ZIP)",
-            data=st.session_state['excel_analyzer_result'],
-            file_name="Analyzed_Files.zip",
-            mime="application/zip"
-        ) 
+        current_batch_ids = [f.name + str(f.size) for f in uploaded_files]
+        if st.session_state.get('analyzer_last_batch') == current_batch_ids:
+            st.download_button(
+                label="📦 Download All Analyzed Files (ZIP)",
+                data=st.session_state['excel_analyzer_result'],
+                file_name="Analyzed_Files.zip",
+                mime="application/zip"
+            ) 
 def handle_pta_services():
     import io
     import pandas as pd
