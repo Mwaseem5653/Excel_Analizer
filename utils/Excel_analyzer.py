@@ -145,53 +145,56 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
     if enable_eyecon_lookup:
         mobile_summary["Eyecon Name"] = ""
         
+        def extract_eyecon_names(d):
+            found = set()
+            if not isinstance(d, dict): return found
+            
+            # Check direct keys
+            fname = d.get("fullName") or d.get("name")
+            if fname: found.add(fname)
+            
+            # Check otherNames list
+            others = d.get("otherNames", [])
+            if isinstance(others, list):
+                for o in others:
+                    if isinstance(o, dict):
+                        n = o.get("name")
+                        if n: found.add(n)
+                    elif isinstance(o, str):
+                        found.add(o)
+            return found
+
         for idx in mobile_summary.index[:eyecon_top_n]:
             raw_num = str(mobile_summary.at[idx, "Mobile Number"]).strip()
             
             try:
                 data = get_eyecon_info(raw_num)
-                print(f"Eyecon API Response for {raw_num}: {data}") # Console Log
                 
-                # Check for quota or subscription errors
-                if "message" in data and ("quota" in data["message"].lower() or "subscribe" in data["message"].lower()):
-                    error_msg = "Quota Exceeded / Sub Req"
-                    eyecon_cache[raw_num] = error_msg
-                    mobile_summary.at[idx, "Eyecon Name"] = error_msg
-                    continue
+                # Check specific API error flags
+                if isinstance(data, dict) and "message" in data:
+                    msg = data["message"].lower()
+                    if "quota" in msg or "subscribe" in msg:
+                        error_msg = "Quota Exceeded / Sub Req"
+                        eyecon_cache[raw_num] = error_msg
+                        mobile_summary.at[idx, "Eyecon Name"] = error_msg
+                        continue
 
-                # Parse response
-                eyecon_name = ""
-                all_names = set()
-
-                if not data.get("error") and data.get("status"):
-                    # Helper to extract from dict
-                    def extract_names(d):
-                        fname = d.get("fullName") or d.get("name")
-                        if fname: all_names.add(fname)
-                        
-                        others = d.get("otherNames", [])
-                        if isinstance(others, list):
-                            for o in others:
-                                if isinstance(o, dict):
-                                    n = o.get("name")
-                                    if n: all_names.add(n)
-                                elif isinstance(o, str):
-                                    all_names.add(o)
-
-                    # Check top level
-                    extract_names(data)
+                # Proceed if valid status
+                if isinstance(data, dict) and (data.get("status") or data.get("fullName")):
+                    all_names = extract_eyecon_names(data)
                     
-                    # Check nested data if present
+                    # Check nested 'data' object if it exists
                     if isinstance(data.get("data"), dict):
-                        extract_names(data.get("data"))
-
-                if all_names:
-                    eyecon_name = "\n".join(list(all_names))
-
-                if eyecon_name:
-                    eyecon_cache[raw_num] = eyecon_name
-                    mobile_summary.at[idx, "Eyecon Name"] = eyecon_name
+                        all_names.update(extract_eyecon_names(data["data"]))
                     
+                    if all_names:
+                        final_name = " | ".join(sorted(list(all_names)))
+                        mobile_summary.at[idx, "Eyecon Name"] = final_name
+                        eyecon_cache[raw_num] = final_name
+                else:
+                    # Optional: Log not found?
+                    pass
+
             except Exception as e:
                 print(f"⚠️ Eyecon Lookup Failed for {raw_num}: {e}")
 

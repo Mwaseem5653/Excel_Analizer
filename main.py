@@ -581,41 +581,8 @@ def show_main_app():
                 if data.get("error"): st.error(data["error"])
                 else: st.table(pd.DataFrame({"Attribute": list(data.keys()), "Value": list(data.values())}))
 
-def ensure_backend_running():
-    """Starts the FastAPI backend if it's not running."""
-    import subprocess
-    import sys
-    
-    # Simple check: If .uvicorn_port file exists, assume it's running (simplified).
-    # A more robust check would be to try connecting to the port.
-    # For now, we will try to start it if the file is missing or just rely on the user to restart if it crashes.
-    # But to prevent multiple instances, we should be careful.
-    # Let's try to connect to the port if file exists.
-    
-    port_file = ".uvicorn_port"
-    server_running = False
-    
-    if os.path.exists(port_file):
-        try:
-            with open(port_file, "r") as f:
-                port = int(f.read().strip())
-            # Try to connect
-            import socket
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                if s.connect_ex(("127.0.0.1", port)) == 0:
-                    server_running = True
-        except:
-            pass
-            
-    if not server_running:
-        st.toast("🚀 Starting background API server...")
-        subprocess.Popen([sys.executable, "fastapi_server.py"], cwd=os.getcwd())
-        time.sleep(2) # Give it a moment
-
 # ---------- Main App ----------
 def main():
-    ensure_backend_running()
-
     if not auth.is_logged_in():
         auth.login()
         return

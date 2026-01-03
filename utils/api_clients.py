@@ -100,24 +100,6 @@ async def get_providers_proxy(accountNumber: str):
             return {"error": str(e)}
 
 def get_eyecon_info(number: str, code: str = "92"):
-    # Try Local Server First
-    try:
-        if os.path.exists(".uvicorn_port"):
-            with open(".uvicorn_port", "r") as f:
-                port = f.read().strip()
-            
-            if port:
-                local_url = f"http://127.0.0.1:{port}/lookup"
-                try:
-                    resp = requests.get(local_url, params={"number": number, "code": code}, timeout=5)
-                    if resp.status_code == 200:
-                        return resp.json()
-                except Exception as e:
-                    print(f"Local server failed, falling back: {e}")
-    except Exception:
-        pass
-
-    # Fallback to Direct RapidAPI Call
     rapid_api_key = os.getenv("RAPID_API_KEY")
     if not rapid_api_key:
         return {"error": "RAPID_API_KEY not found in environment variables."}
@@ -135,7 +117,7 @@ def get_eyecon_info(number: str, code: str = "92"):
     try:
         response = requests.get(url, headers=headers, params=params, timeout=10)
         data = response.json()
-        print(data)
+        
         # Return data even if status is false/missing so we can debug the error (e.g., Auth failure, Quota)
         if not data.get("status"):
              # If no error key, maybe add one for consistency, but for now just return raw data
