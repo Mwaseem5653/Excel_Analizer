@@ -270,7 +270,11 @@ def handle_excel_analyzer():
         top_n = st.number_input("Top N Records to Analyze (SIM Info)", min_value=1, value=15, step=1)
     
     if check_eyecon_info:
-        eyecon_top_n = st.number_input("Top N Records for Eyecon", min_value=1, value=15, step=1)
+        if "Admin" in user_services:
+            eyecon_top_n = st.number_input("Top N Records for Eyecon", min_value=1, value=15, step=1)
+        else:
+            eyecon_top_n = 10
+            st.number_input("Top N Records for Eyecon", value=10, disabled=True, help="Top Ten user finds on eyecon.")
 
     # Uploader Key for clearing
     if "uploader_key_analyzer" not in st.session_state:
