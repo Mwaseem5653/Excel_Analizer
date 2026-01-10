@@ -149,6 +149,7 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
         mobile_summary["Eyecon Name"] = ""
         if include_eyecon_images:
             mobile_summary["Eyecon Image"] = ""
+            mobile_summary["Facebook Link"] = ""
         
         def extract_eyecon_names(d):
             found = set()
@@ -182,7 +183,9 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
                         error_msg = "Quota Exceeded / Sub Req"
                         eyecon_cache[raw_num] = {"name": error_msg, "image": ""}
                         mobile_summary.at[idx, "Eyecon Name"] = error_msg
-                        mobile_summary.at[idx, "Eyecon Image"] = ""
+                        if include_eyecon_images:
+                            mobile_summary.at[idx, "Eyecon Image"] = ""
+                            mobile_summary.at[idx, "Facebook Link"] = ""
                         continue
 
                 # Proceed if valid status
@@ -240,11 +243,24 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
                              if isinstance(item, dict) and item.get("photo"):
                                  image_url = item.get("photo")
                                  break
+                    
+                    # Extract Facebook URL
+                    fb_url = ""
+                    if isinstance(data.get("facebookID"), dict):
+                        fb_url = data["facebookID"].get("url")
+                    elif isinstance(data.get("data"), dict) and isinstance(data["data"].get("facebookID"), dict):
+                        fb_url = data["data"]["facebookID"].get("url")
                         
                     mobile_summary.at[idx, "Eyecon Name"] = final_name
                     if include_eyecon_images:
                         mobile_summary.at[idx, "Eyecon Image"] = image_url
-                    eyecon_cache[raw_num] = {"name": final_name, "image": image_url if include_eyecon_images else ""}
+                        mobile_summary.at[idx, "Facebook Link"] = fb_url
+                    
+                    eyecon_cache[raw_num] = {
+                        "name": final_name, 
+                        "image": image_url if include_eyecon_images else "",
+                        "fb_url": fb_url
+                    }
                 else:
                     # Optional: Log not found?
                     pass
@@ -258,6 +274,7 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
         base_mob_cols.append("Eyecon Name")
         if include_eyecon_images:
             base_mob_cols.append("Eyecon Image")
+            base_mob_cols.append("Facebook Link")
     if enable_lookup:
         base_mob_cols.extend(["Name", "CNIC", "Address"])
         
@@ -356,7 +373,9 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
             base_cols.append("Eyecon Name")
             if include_eyecon_images:
                 summary["Eyecon Image"] = summary["B-party"].map(lambda x: eyecon_cache.get(str(x), {}).get("image", ""))
+                summary["Facebook Link"] = summary["B-party"].map(lambda x: eyecon_cache.get(str(x), {}).get("fb_url", ""))
                 base_cols.append("Eyecon Image")
+                base_cols.append("Facebook Link")
             
         if enable_lookup:
             summary["Name"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("Name", ""))
@@ -393,6 +412,7 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
     for ws in wb.worksheets:
         eyecon_col_index = None
         eyecon_img_col_index = None
+        fb_link_col_index = None
 
         for c in ws[1]:
             c.fill = fill
@@ -402,6 +422,8 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
                 eyecon_col_index = c.column
             if c.value == "Eyecon Image":
                 eyecon_img_col_index = c.column
+            if c.value == "Facebook Link":
+                fb_link_col_index = c.column
 
         for col in ws.columns:
             col_letter = get_column_letter(col[0].column)
@@ -422,6 +444,20 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
             for cell in ws[col_letter]:
                  # Keep existing horizontal/vertical but enable wrap_text
                  cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        # -------------------- HYPERLINK FACEBOOK COLUMN --------------------
+        if fb_link_col_index:
+             col_letter = get_column_letter(fb_link_col_index)
+             ws.column_dimensions[col_letter].width = 15
+             
+             for row in ws.iter_rows(min_row=2, min_col=fb_link_col_index, max_col=fb_link_col_index):
+                 cell = row[0]
+                 url = cell.value
+                 if url and isinstance(url, str) and url.startswith("http"):
+                     cell.value = "View Profile"
+                     cell.hyperlink = url
+                     cell.font = Font(color="0000FF", underline="single")
+                     cell.alignment = Alignment(horizontal="center", vertical="center")
 
         # -------------------- EMBED EYECON IMAGES --------------------
         if include_eyecon_images and eyecon_img_col_index:

@@ -42,7 +42,6 @@ def lookup(number: str, code: str = "92"):  # default 92
     try:
         response = requests.get(url, headers=headers, params=params, timeout=10)
         data = response.json()
-        print(f"Eyecon API Response for {number}: {data}")
 
         if not data.get("status"):
             return {"status": False, "message": "No record found"}

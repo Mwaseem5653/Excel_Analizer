@@ -117,7 +117,6 @@ def get_eyecon_info(number: str, code: str = "92"):
     try:
         response = requests.get(url, headers=headers, params=params, timeout=10)
         data = response.json()
-        print(f"Eyecon API Response for {number}: {data}")
         
         # Return data even if status is false/missing so we can debug the error (e.g., Auth failure, Quota)
         if not data.get("status"):
