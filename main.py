@@ -93,51 +93,55 @@ def handle_application_extractor():
     )
 
     if uploaded_files:
-        # --- Fair Token Logic ---
+        # --- Config & Paid Files Tracking ---
+        current_config = [str(ai_provider), str(selected_model_name), str(batch_size)]
+        if st.session_state.get('app_last_config') != current_config:
+            st.session_state.app_paid_files = set()
+            st.session_state.app_last_config = current_config
+        
         if 'app_paid_files' not in st.session_state:
             st.session_state.app_paid_files = set()
-        
-        # Identify files not yet paid for in this session
-        new_files = [f for f in uploaded_files if f.name not in st.session_state.app_paid_files]
-        
-        if new_files:
-            total_processing_units = 0
-            for f in new_files:
-                if f.name.lower().endswith(".pdf"):
-                    try:
-                        pdf_bytes = f.read()
-                        with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-                             total_processing_units += doc.page_count
-                        f.seek(0)
-                    except Exception as e:
-                        st.warning(f"Could not count pages for {f.name}, counting as 1.")
-                        total_processing_units += 1
-                        f.seek(0)
-                else:
-                    total_processing_units += 1
-
-            cost_per_unit = 2
-            total_cost = total_processing_units * cost_per_unit
-            
-            current_tokens = auth.get_tokens()
-            if current_tokens < total_cost:
-                st.error(f"⚠️ Insufficient Tokens! You need {total_cost} tokens ({total_processing_units} pages/images) but have {current_tokens}.")
-                return
-            
-            if auth.deduct_tokens(total_cost):
-                for f in new_files:
-                    st.session_state.app_paid_files.add(f.name)
-                st.success(f"💰 {total_cost} tokens deducted for {total_processing_units} pages/images.")
-            else:
-                st.error("Token deduction failed.")
-                return
 
         # --- Processing Logic (Auto-run) ---
-        # Check if already processed this exact batch to avoid re-running on widget changes
-        current_batch_ids = [f.name + str(f.size) for f in uploaded_files]
+        current_batch_ids = [f.name + str(f.size) for f in uploaded_files] + current_config
+        
         if st.session_state.get('app_last_batch') != current_batch_ids:
             
-            # Clear previous results to avoid showing stale download button
+            # --- Token Deduction Logic (Only for new files in this config) ---
+            new_files = [f for f in uploaded_files if f.name not in st.session_state.app_paid_files]
+            
+            if new_files:
+                total_processing_units = 0
+                for f in new_files:
+                    if f.name.lower().endswith(".pdf"):
+                        try:
+                            pdf_bytes = f.read()
+                            with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+                                 total_processing_units += doc.page_count
+                            f.seek(0)
+                        except Exception:
+                            total_processing_units += 1
+                            f.seek(0)
+                    else:
+                        total_processing_units += 1
+
+                cost_per_unit = 2
+                total_cost = total_processing_units * cost_per_unit
+                
+                current_tokens = auth.get_tokens()
+                if current_tokens < total_cost:
+                    st.error(f"⚠️ Insufficient Tokens! You need {total_cost} tokens ({total_processing_units} pages/images) but have {current_tokens}.")
+                    return
+                
+                if auth.deduct_tokens(total_cost):
+                    for f in new_files:
+                        st.session_state.app_paid_files.add(f.name)
+                    st.success(f"💰 {total_cost} tokens deducted for {len(new_files)} new files.")
+                else:
+                    st.error("Token deduction failed.")
+                    return
+            
+            # Clear previous results
             if 'app_extractor_result' in st.session_state:
                 del st.session_state['app_extractor_result']
 
@@ -258,115 +262,245 @@ def handle_excel_analyzer():
     with col_opt1:
         check_sim_info = st.toggle("Check Sim Info (Fetch Name/CNIC)", value=False)
     
-    # Eyecon Toggle - For Admins or Users with explicit permission
-    check_eyecon_info = False
-    include_eyecon_images = False
-    user_services = auth.get_user_services()
-    if "Admin" in user_services or "Eyecon Info" in user_services:
-        with col_opt2:
-            check_eyecon_info = st.toggle("Check Eyecon Info", value=False)
-            if check_eyecon_info:
-                include_eyecon_images = st.toggle("Include Images in Excel", value=False)
+        # Eyecon Toggle - For Admins or Users with explicit permission
     
-    top_n = 15 # Default
-    eyecon_top_n = 15 # Default
-
-    if check_sim_info:
-        top_n = st.number_input("Top N Records to Analyze (SIM Info)", min_value=1, value=15, step=1)
+        check_eyecon_info = False
     
-    if check_eyecon_info:
-        if "Admin" in user_services:
-            eyecon_top_n = st.number_input("Top N Records for Eyecon", min_value=1, value=15, step=1)
-        else:
-            eyecon_top_n = 10
-            st.number_input("Top N Records for Eyecon", value=10, disabled=True, help="Top Ten user finds on eyecon.")
-
-    # Uploader Key for clearing
-    if "uploader_key_analyzer" not in st.session_state:
-        st.session_state.uploader_key_analyzer = 0
-
-    uploaded_files = st.file_uploader(
-        "Upload Excel/CSV files",
-        type=["xlsx", "csv"],
-        accept_multiple_files=True,
-        key=f"analyzer_uploader_{st.session_state.uploader_key_analyzer}"
-    )
-
-    if uploaded_files:
-        # --- Processing Logic (Auto-run) ---
-        # Include settings in batch ID so changing an option triggers a re-run
-        current_batch_ids = [
-            f.name + str(f.size) for f in uploaded_files
-        ] + [str(check_sim_info), str(check_eyecon_info), str(top_n), str(eyecon_top_n), str(include_eyecon_images)]
-
-        if st.session_state.get('analyzer_last_batch') != current_batch_ids:
-            
-            # --- Token Deduction Logic ---
-            cost_per_file = 15
-            total_cost = len(uploaded_files) * cost_per_file
-            
-            current_tokens = auth.get_tokens()
-            if current_tokens < total_cost:
-                 st.error(f"⚠️ Insufficient Tokens! You need {total_cost} but have {current_tokens}.")
-                 return
-
-            if not auth.deduct_tokens(total_cost):
-                 st.error("Token deduction failed.")
-                 return
-            
-            st.success(f"💰 {total_cost} tokens deducted for this analysis.")
-            
-            # Clear previous results
-            if 'excel_analyzer_result' in st.session_state:
-                del st.session_state['excel_analyzer_result']
-
-            os.makedirs("temp_uploads", exist_ok=True)
-            zip_buffer = io.BytesIO()
-
-            with zipfile.ZipFile(zip_buffer, "w") as zipf:
-                for uploaded_file in uploaded_files:
-                    temp_path = os.path.join("temp_uploads", uploaded_file.name)
-                    with open(temp_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
-
-                    try:
-                        st.write(f"⏳ Processing file: **{uploaded_file.name}** ...")
-                        # Pass user options to analyzer
-                        analyzed_path = analyze_excel(
-                            temp_path, 
-                            top_n=int(top_n), 
-                            enable_lookup=check_sim_info,
-                            enable_eyecon_lookup=check_eyecon_info,
-                            eyecon_top_n=int(eyecon_top_n),
-                            include_eyecon_images=include_eyecon_images
-                        )
-                        st.success(f"✅ {uploaded_file.name} analyzed successfully!")
-                        zipf.write(analyzed_path, arcname="(Analyzed)-" + uploaded_file.name)
-                    except Exception as e:
-                        st.error(f"❌ Error in {uploaded_file.name}: {str(e)}")
-
-            zip_buffer.seek(0)
-            st.session_state['excel_analyzer_result'] = zip_buffer.getvalue()
-            st.session_state['analyzer_last_batch'] = current_batch_ids
-            st.success("Analysis Complete!")
-
-    else:
-        st.session_state['analyzer_last_batch'] = []
-
-    # Show Download
-    if 'excel_analyzer_result' in st.session_state and uploaded_files:
-        # Must match the one at the top of the function
-        current_batch_ids = [
-            f.name + str(f.size) for f in uploaded_files
-        ] + [str(check_sim_info), str(check_eyecon_info), str(top_n), str(eyecon_top_n), str(include_eyecon_images)]
+        include_eyecon_images = False # Will be set to True if eyecon lookup is enabled
+    
+        user_services = auth.get_user_services()
+    
+        if "Admin" in user_services or "Eyecon Info" in user_services:
+    
+            with col_opt2:
+    
+                check_eyecon_info = st.toggle("Check Eyecon Info", value=False)
+    
+                if check_eyecon_info:
+    
+                    include_eyecon_images = True # Always include links if enabled
+    
         
-        if st.session_state.get('analyzer_last_batch') == current_batch_ids:
-            st.download_button(
-                label="📦 Download All Analyzed Files (ZIP)",
-                data=st.session_state['excel_analyzer_result'],
-                file_name="Analyzed_Files.zip",
-                mime="application/zip"
-            ) 
+    
+        top_n = 15 # Default
+    
+        eyecon_top_n = 15 # Default
+    
+    
+    
+        if check_sim_info:
+    
+            top_n = st.number_input("Top N Records to Analyze (SIM Info)", min_value=1, value=15, step=1)
+    
+        
+    
+        if check_eyecon_info:
+    
+            if "Admin" in user_services:
+    
+                eyecon_top_n = st.number_input("Top N Records for Eyecon", min_value=1, value=15, step=1)
+    
+            else:
+    
+                eyecon_top_n = 10
+    
+                st.number_input("Top N Records for Eyecon", value=10, disabled=True, help="Top Ten user finds on eyecon.")
+    
+    
+    
+        # Uploader Key for clearing
+    
+        if "uploader_key_analyzer" not in st.session_state:
+    
+            st.session_state.uploader_key_analyzer = 0
+    
+    
+    
+        uploaded_files = st.file_uploader(
+    
+            "Upload Excel/CSV files",
+    
+            type=["xlsx", "csv"],
+    
+            accept_multiple_files=True,
+    
+            key=f"analyzer_uploader_{st.session_state.uploader_key_analyzer}"
+    
+        )
+    
+    
+    
+        if uploaded_files:
+    
+            # --- Config & Paid Files Tracking ---
+    
+            current_config = [str(check_sim_info), str(check_eyecon_info), str(top_n), str(eyecon_top_n)]
+    
+            if st.session_state.get('analyzer_last_config') != current_config:
+    
+                st.session_state.analyzer_paid_files = set()
+    
+                st.session_state.analyzer_last_config = current_config
+    
+            
+    
+            if 'analyzer_paid_files' not in st.session_state:
+    
+                st.session_state.analyzer_paid_files = set()
+    
+    
+    
+            # --- Processing Logic (Auto-run) ---
+    
+            current_batch_ids = [f.name + str(f.size) for f in uploaded_files] + current_config
+    
+    
+    
+            if st.session_state.get('analyzer_last_batch') != current_batch_ids:
+    
+                
+    
+                # --- Token Deduction Logic (Only for new files) ---
+    
+                new_files = [f for f in uploaded_files if f.name not in st.session_state.analyzer_paid_files]
+    
+                
+    
+                if new_files:
+    
+                    cost_per_file = 15
+    
+                    total_cost = len(new_files) * cost_per_file
+    
+                    
+    
+                    current_tokens = auth.get_tokens()
+    
+                    if current_tokens < total_cost:
+    
+                         st.error(f"⚠️ Insufficient Tokens! You need {total_cost} but have {current_tokens}.")
+    
+                         return
+    
+    
+    
+                    if auth.deduct_tokens(total_cost):
+    
+                        for f in new_files:
+    
+                            st.session_state.analyzer_paid_files.add(f.name)
+    
+                        st.success(f"💰 {total_cost} tokens deducted for {len(new_files)} new files.")
+    
+                    else:
+    
+                         st.error("Token deduction failed.")
+    
+                         return
+    
+                
+    
+                 # Clear previous results
+    
+                if 'excel_analyzer_result' in st.session_state:
+    
+                    del st.session_state['excel_analyzer_result']
+    
+    
+    
+                os.makedirs("temp_uploads", exist_ok=True)
+    
+                zip_buffer = io.BytesIO()
+    
+    
+    
+                with zipfile.ZipFile(zip_buffer, "w") as zipf:
+    
+                    for uploaded_file in uploaded_files:
+    
+                        temp_path = os.path.join("temp_uploads", uploaded_file.name)
+    
+                        with open(temp_path, "wb") as f:
+    
+                            f.write(uploaded_file.getbuffer())
+    
+    
+    
+                        try:
+    
+                            st.write(f"⏳ Processing file: **{uploaded_file.name}** ...")
+    
+                            # Pass user options to analyzer
+    
+                            analyzed_path = analyze_excel(
+    
+                                temp_path, 
+    
+                                top_n=int(top_n), 
+    
+                                enable_lookup=check_sim_info,
+    
+                                enable_eyecon_lookup=check_eyecon_info,
+    
+                                eyecon_top_n=int(eyecon_top_n),
+    
+                                include_eyecon_images=include_eyecon_images
+    
+                            )
+    
+                            st.success(f"✅ {uploaded_file.name} analyzed successfully!")
+    
+                            zipf.write(analyzed_path, arcname="(Analyzed)-" + uploaded_file.name)
+    
+                        except Exception as e:
+    
+                            st.error(f"❌ Error in {uploaded_file.name}: {str(e)}")
+    
+    
+    
+                zip_buffer.seek(0)
+    
+                st.session_state['excel_analyzer_result'] = zip_buffer.getvalue()
+    
+                st.session_state['analyzer_last_batch'] = current_batch_ids
+    
+                st.success("Analysis Complete!")
+    
+    
+    
+        else:
+    
+            st.session_state['analyzer_last_batch'] = []
+    
+    
+    
+        # Show Download
+    
+        if 'excel_analyzer_result' in st.session_state and uploaded_files:
+    
+            # Re-sync current_batch_ids for the button check
+    
+            current_config = [str(check_sim_info), str(check_eyecon_info), str(top_n), str(eyecon_top_n)]
+    
+            current_batch_ids = [f.name + str(f.size) for f in uploaded_files] + current_config
+    
+            
+    
+            if st.session_state.get('analyzer_last_batch') == current_batch_ids:
+    
+                st.download_button(
+    
+                    label="📦 Download All Analyzed Files (ZIP)",
+    
+                    data=st.session_state['excel_analyzer_result'],
+    
+                    file_name="Analyzed_Files.zip",
+    
+                    mime="application/zip"
+    
+                ) 
+    
+     
 def handle_pta_services():
     import io
     import pandas as pd
