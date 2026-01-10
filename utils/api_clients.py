@@ -104,10 +104,10 @@ def get_eyecon_info(number: str, code: str = "92"):
     if not rapid_api_key:
         return {"error": "RAPID_API_KEY not found in environment variables."}
 
-    url = "https://eyecon.p.rapidapi.com/api/v1/search"
+    url = "https://eyecon3.p.rapidapi.com/api/v1/search"
     headers = {
         "x-rapidapi-key": rapid_api_key,
-        "x-rapidapi-host": "eyecon.p.rapidapi.com"
+        "x-rapidapi-host": "eyecon3.p.rapidapi.com"
     }
     params = {
         "code": code,
@@ -117,6 +117,7 @@ def get_eyecon_info(number: str, code: str = "92"):
     try:
         response = requests.get(url, headers=headers, params=params, timeout=10)
         data = response.json()
+        print(f"Eyecon API Response for {number}: {data}")
         
         # Return data even if status is false/missing so we can debug the error (e.g., Auth failure, Quota)
         if not data.get("status"):

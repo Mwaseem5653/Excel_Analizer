@@ -184,19 +184,21 @@ def handle_application_extractor():
 
                 prompt = (
                     "Extract ONLY the following fields from this handwritten Urdu police application image. "
+                    "this application is reporting of snatching /theft/lost of mobile phone and other properties. for police"
+                    "Kindly answer in roman urdu and dont puzzle if there is no macth simply write None. "
                     "Output PLAIN TEXT ONLY, "
                     "Follow EXACT field names and order:\n\n"
                     "only return following fields\n"
-                    "Name: <applicant name in english only without father name>\n"
+                    "Name: <applicant name (victam of incident) >\n"
                     "Phone Number: <judge from context which phone number is active, or None>\n"
                     "IMEI Number: <all IMEIs separated by space or None>\n"
                     "Last Num Used: <judge from context which phone number was snatched , or None>\n"
-                    "Mobile Model: <models name or None>\n"
+                    "Mobile Model: <models name all phones or None>\n"
                     "Other Property: <snatched properties like cash bike wallet etc or None>\n"
                     "Date Of Offence: <DD.MM.YYYY or None>\n"
                     "Time Of Offence: <HH:MM AM/PM or None>\n"
-                    "Type: <Snatched/Theft/Lost or None>\n"
-                    "Police Station: < Example Ps-Zamatown , Ps-Korangi , Ps-Landhi , Ps-Shahfaisal , Ps-Alflah etc>\n\n"
+                    "Type: <Snatched/Theft/Lost judge incident in which catogery lies or None>\n"
+                    "Police Station: < Example Ps-Zamatown , Ps-Korangi , Ps-Landhi , Ps-Shahfaisal , Ps-Alflah etc ps name methin start of aplication like than zamantown >\n\n"
                 )
 
                 raw_text = ""
@@ -258,10 +260,13 @@ def handle_excel_analyzer():
     
     # Eyecon Toggle - For Admins or Users with explicit permission
     check_eyecon_info = False
+    include_eyecon_images = False
     user_services = auth.get_user_services()
     if "Admin" in user_services or "Eyecon Info" in user_services:
         with col_opt2:
             check_eyecon_info = st.toggle("Check Eyecon Info", value=False)
+            if check_eyecon_info:
+                include_eyecon_images = st.toggle("Include Images in Excel", value=False)
     
     top_n = 15 # Default
     eyecon_top_n = 15 # Default
@@ -332,7 +337,8 @@ def handle_excel_analyzer():
                             top_n=int(top_n), 
                             enable_lookup=check_sim_info,
                             enable_eyecon_lookup=check_eyecon_info,
-                            eyecon_top_n=int(eyecon_top_n)
+                            eyecon_top_n=int(eyecon_top_n),
+                            include_eyecon_images=include_eyecon_images
                         )
                         st.success(f"✅ {uploaded_file.name} analyzed successfully!")
                         zipf.write(analyzed_path, arcname="(Analyzed)-" + uploaded_file.name)

@@ -2,6 +2,9 @@ import pandas as pd
 import os
 import re
 import requests
+import base64
+from io import BytesIO
+from openpyxl.drawing.image import Image as XLImage
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
@@ -9,7 +12,7 @@ from utils.table_header_finder import read_excel_auto
 from utils.api_clients import get_phone_info, get_eyecon_info
 
 
-def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=False, eyecon_top_n=15):
+def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=False, eyecon_top_n=15, include_eyecon_images=False):
 
     # -------------------- Read Excel --------------------
     file_ext = os.path.splitext(file_path)[1].lower()
@@ -144,6 +147,8 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
     eyecon_cache = {}
     if enable_eyecon_lookup:
         mobile_summary["Eyecon Name"] = ""
+        if include_eyecon_images:
+            mobile_summary["Eyecon Image"] = ""
         
         def extract_eyecon_names(d):
             found = set()
@@ -175,8 +180,9 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
                     msg = data["message"].lower()
                     if "quota" in msg or "subscribe" in msg:
                         error_msg = "Quota Exceeded / Sub Req"
-                        eyecon_cache[raw_num] = error_msg
+                        eyecon_cache[raw_num] = {"name": error_msg, "image": ""}
                         mobile_summary.at[idx, "Eyecon Name"] = error_msg
+                        mobile_summary.at[idx, "Eyecon Image"] = ""
                         continue
 
                 # Proceed if valid status
@@ -187,10 +193,58 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
                     if isinstance(data.get("data"), dict):
                         all_names.update(extract_eyecon_names(data["data"]))
                     
+                    final_name = ""
                     if all_names:
                         final_name = " | ".join(sorted(list(all_names)))
-                        mobile_summary.at[idx, "Eyecon Name"] = final_name
-                        eyecon_cache[raw_num] = final_name
+                    
+                    # Extract Image
+                    image_url = ""
+                    
+                    # Helper to get image from 'images' list
+                    def get_images_url(d):
+                        if isinstance(d.get("images"), list):
+                            for img_entry in d["images"]:
+                                if isinstance(img_entry, dict) and "pictures" in img_entry:
+                                    pics = img_entry["pictures"]
+                                    if isinstance(pics, dict):
+                                        return pics.get("200") or pics.get("600") or next(iter(pics.values()), None)
+                        return None
+
+                    # 1. Check for Base64 (nested or direct)
+                    raw_b64 = data.get("b64")
+                    if not raw_b64 and isinstance(data.get("data"), dict):
+                        raw_b64 = data["data"].get("b64")
+                    
+                    if raw_b64:
+                        if not raw_b64.startswith("data:image"):
+                            image_url = f"data:image/jpeg;base64,{raw_b64}"
+                        else:
+                            image_url = raw_b64
+                    
+                    # 2. Check for Photo URL (nested or direct)
+                    if not image_url:
+                        if isinstance(data.get("data"), dict) and data["data"].get("photo"):
+                            image_url = data["data"].get("photo")
+                        elif data.get("photo"):
+                            image_url = data.get("photo")
+                    
+                    # 3. Check for Images List (Facebook etc)
+                    if not image_url:
+                         image_url = get_images_url(data)
+                         if not image_url and isinstance(data.get("data"), dict):
+                             image_url = get_images_url(data["data"])
+
+                    # 4. Check otherNames
+                    if not image_url and isinstance(data.get("otherNames"), list):
+                         for item in data["otherNames"]:
+                             if isinstance(item, dict) and item.get("photo"):
+                                 image_url = item.get("photo")
+                                 break
+                        
+                    mobile_summary.at[idx, "Eyecon Name"] = final_name
+                    if include_eyecon_images:
+                        mobile_summary.at[idx, "Eyecon Image"] = image_url
+                    eyecon_cache[raw_num] = {"name": final_name, "image": image_url if include_eyecon_images else ""}
                 else:
                     # Optional: Log not found?
                     pass
@@ -198,10 +252,12 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
             except Exception as e:
                 print(f"⚠️ Eyecon Lookup Failed for {raw_num}: {e}")
 
-    # Reorder columns: Mobile Number, [Eyecon Name], [Name, CNIC, Address], ... others
+    # Reorder columns: Mobile Number, [Eyecon Name], [Eyecon Image], [Name, CNIC, Address], ... others
     base_mob_cols = ["Mobile Number"]
     if enable_eyecon_lookup:
         base_mob_cols.append("Eyecon Name")
+        if include_eyecon_images:
+            base_mob_cols.append("Eyecon Image")
     if enable_lookup:
         base_mob_cols.extend(["Name", "CNIC", "Address"])
         
@@ -296,8 +352,11 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
         base_cols = ["B-party"]
         
         if enable_eyecon_lookup:
-            summary["Eyecon Name"] = summary["B-party"].map(lambda x: eyecon_cache.get(str(x), ""))
+            summary["Eyecon Name"] = summary["B-party"].map(lambda x: eyecon_cache.get(str(x), {}).get("name", ""))
             base_cols.append("Eyecon Name")
+            if include_eyecon_images:
+                summary["Eyecon Image"] = summary["B-party"].map(lambda x: eyecon_cache.get(str(x), {}).get("image", ""))
+                base_cols.append("Eyecon Image")
             
         if enable_lookup:
             summary["Name"] = summary["B-party"].map(lambda x: lookup_cache.get(str(x), {}).get("Name", ""))
@@ -333,12 +392,16 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
 
     for ws in wb.worksheets:
         eyecon_col_index = None
+        eyecon_img_col_index = None
+
         for c in ws[1]:
             c.fill = fill
             c.font = bold
             c.alignment = Alignment(horizontal="center")
             if c.value == "Eyecon Name":
                 eyecon_col_index = c.column
+            if c.value == "Eyecon Image":
+                eyecon_img_col_index = c.column
 
         for col in ws.columns:
             col_letter = get_column_letter(col[0].column)
@@ -359,6 +422,56 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
             for cell in ws[col_letter]:
                  # Keep existing horizontal/vertical but enable wrap_text
                  cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        # -------------------- EMBED EYECON IMAGES --------------------
+        if include_eyecon_images and eyecon_img_col_index:
+            col_letter = get_column_letter(eyecon_img_col_index)
+            ws.column_dimensions[col_letter].width = 15  # Fixed width for image column
+            
+            # Iterate through rows in the image column
+            for row_idx, row in enumerate(ws.iter_rows(min_row=2, min_col=eyecon_img_col_index, max_col=eyecon_img_col_index), start=2):
+                cell = row[0]
+                url = cell.value
+                
+                if url and isinstance(url, str):
+                    img_data = None
+                    try:
+                        if url.startswith("data:image"):
+                            # Handle Base64
+                            try:
+                                header, encoded = url.split(",", 1)
+                                img_bytes = base64.b64decode(encoded)
+                                img_data = BytesIO(img_bytes)
+                            except Exception as e:
+                                print(f"⚠️ Failed to decode base64 image at row {row_idx}: {e}")
+                        
+                        elif url.startswith("http"):
+                            # Handle URL
+                            try:
+                                res = requests.get(url, timeout=5)
+                                if res.status_code == 200:
+                                    img_data = BytesIO(res.content)
+                                else:
+                                    print(f"⚠️ Image download failed code {res.status_code} at row {row_idx}")
+                            except Exception as e:
+                                print(f"⚠️ Image download failed at row {row_idx}: {e}")
+
+                        if img_data:
+                            img = XLImage(img_data)
+                            
+                            # Resize image (approx 100x100 px)
+                            img.width = 100
+                            img.height = 100
+                            
+                            # Adjust row height to fit image
+                            ws.row_dimensions[row_idx].height = 80
+                            
+                            # Clear URL and add image
+                            cell.value = "" 
+                            ws.add_image(img, cell.coordinate)
+                            
+                    except Exception as e:
+                        print(f"⚠️ Failed to embed image for row {row_idx}: {e}")
 
     ws = wb["Formatted Data"]
 

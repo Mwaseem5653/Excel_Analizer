@@ -27,11 +27,11 @@ async def home():
 @app.get("/lookup")
 def lookup(number: str, code: str = "92"):  # default 92
     rapid_api_key = os.getenv("RAPID_API_KEY")
-    url = "https://eyecon.p.rapidapi.com/api/v1/search"
+    url = "https://eyecon3.p.rapidapi.com/api/v1/search"
 
     headers = {
         "x-rapidapi-key": rapid_api_key,
-        "x-rapidapi-host": "eyecon.p.rapidapi.com"
+        "x-rapidapi-host": "eyecon3.p.rapidapi.com"
     }
 
     params = {
@@ -42,6 +42,7 @@ def lookup(number: str, code: str = "92"):  # default 92
     try:
         response = requests.get(url, headers=headers, params=params, timeout=10)
         data = response.json()
+        print(f"Eyecon API Response for {number}: {data}")
 
         if not data.get("status"):
             return {"status": False, "message": "No record found"}
