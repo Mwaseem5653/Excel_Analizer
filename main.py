@@ -12,13 +12,25 @@ load_dotenv()
 # ---------- Page Config ----------
 st.set_page_config(page_title="Urdu Police Application Extractor", layout="wide")
 
-# ---------- Session State ----------
-if "page" not in st.session_state:
-    st.session_state.page = "app"  # default page
+# ---------- Session State Initialization ----------
+def init_session_state():
+    if "page" not in st.session_state:
+        st.session_state.page = "app"
     if "session_id" not in st.session_state:
         st.session_state.session_id = str(uuid.uuid4())
+    if 'analyzer_paid_files' not in st.session_state:
+        st.session_state.analyzer_paid_files = set()
+    if 'analyzer_last_config' not in st.session_state:
+        st.session_state.analyzer_last_config = []
+    if 'app_paid_files' not in st.session_state:
+        st.session_state.app_paid_files = set()
+    if 'app_last_config' not in st.session_state:
+        st.session_state.app_last_config = []
 
-SESSION_TEMP_DIR = os.path.join("temp_uploads", st.session_state.session_id)
+init_session_state()
+
+# ---------- Directory Setup ----------
+SESSION_TEMP_DIR = os.path.join("temp_uploads", st.session_state.get("session_id", "default"))
 os.makedirs(SESSION_TEMP_DIR, exist_ok=True)
 
 # ---------- Cleanup ----------
