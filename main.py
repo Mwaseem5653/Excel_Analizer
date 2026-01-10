@@ -256,7 +256,7 @@ def handle_excel_analyzer():
     # --- New Options ---
     col_opt1, col_opt2 = st.columns(2)
     with col_opt1:
-        check_sim_info = st.toggle("Check Sim Info (Fetch Name/CNIC)", value=True)
+        check_sim_info = st.toggle("Check Sim Info (Fetch Name/CNIC)", value=False)
     
     # Eyecon Toggle - For Admins or Users with explicit permission
     check_eyecon_info = False
@@ -293,37 +293,37 @@ def handle_excel_analyzer():
     )
 
     if uploaded_files:
-        # --- Fair Token Logic ---
-        if 'analyzer_paid_files' not in st.session_state:
-            st.session_state.analyzer_paid_files = set()
-        
-        new_files = [f for f in uploaded_files if f.name not in st.session_state.analyzer_paid_files]
-        
-        if new_files:
+        # --- Processing Logic (Auto-run) ---
+        # Include settings in batch ID so changing an option triggers a re-run
+        current_batch_ids = [
+            f.name + str(f.size) for f in uploaded_files
+        ] + [str(check_sim_info), str(check_eyecon_info), str(top_n), str(eyecon_top_n), str(include_eyecon_images)]
+
+        if st.session_state.get('analyzer_last_batch') != current_batch_ids:
+            
+            # --- Token Deduction Logic ---
             cost_per_file = 15
-            total_cost = len(new_files) * cost_per_file
+            total_cost = len(uploaded_files) * cost_per_file
             
             current_tokens = auth.get_tokens()
             if current_tokens < total_cost:
                  st.error(f"⚠️ Insufficient Tokens! You need {total_cost} but have {current_tokens}.")
                  return
 
-            if auth.deduct_tokens(total_cost):
-                for f in new_files:
-                    st.session_state.analyzer_paid_files.add(f.name)
-                st.success(f"💰 {total_cost} tokens deducted for {len(new_files)} new files.")
-            else:
+            if not auth.deduct_tokens(total_cost):
                  st.error("Token deduction failed.")
                  return
-
-        # --- Processing Logic (Auto-run) ---
-        current_batch_ids = [f.name + str(f.size) for f in uploaded_files]
-        if st.session_state.get('analyzer_last_batch') != current_batch_ids:
             
-             os.makedirs("temp_uploads", exist_ok=True)
-             zip_buffer = io.BytesIO()
+            st.success(f"💰 {total_cost} tokens deducted for this analysis.")
+            
+            # Clear previous results
+            if 'excel_analyzer_result' in st.session_state:
+                del st.session_state['excel_analyzer_result']
 
-             with zipfile.ZipFile(zip_buffer, "w") as zipf:
+            os.makedirs("temp_uploads", exist_ok=True)
+            zip_buffer = io.BytesIO()
+
+            with zipfile.ZipFile(zip_buffer, "w") as zipf:
                 for uploaded_file in uploaded_files:
                     temp_path = os.path.join("temp_uploads", uploaded_file.name)
                     with open(temp_path, "wb") as f:
@@ -345,17 +345,21 @@ def handle_excel_analyzer():
                     except Exception as e:
                         st.error(f"❌ Error in {uploaded_file.name}: {str(e)}")
 
-             zip_buffer.seek(0)
-             st.session_state['excel_analyzer_result'] = zip_buffer.getvalue()
-             st.session_state['analyzer_last_batch'] = current_batch_ids
-             st.success("Analysis Complete!")
+            zip_buffer.seek(0)
+            st.session_state['excel_analyzer_result'] = zip_buffer.getvalue()
+            st.session_state['analyzer_last_batch'] = current_batch_ids
+            st.success("Analysis Complete!")
 
     else:
         st.session_state['analyzer_last_batch'] = []
 
     # Show Download
     if 'excel_analyzer_result' in st.session_state and uploaded_files:
-        current_batch_ids = [f.name + str(f.size) for f in uploaded_files]
+        # Must match the one at the top of the function
+        current_batch_ids = [
+            f.name + str(f.size) for f in uploaded_files
+        ] + [str(check_sim_info), str(check_eyecon_info), str(top_n), str(eyecon_top_n), str(include_eyecon_images)]
+        
         if st.session_state.get('analyzer_last_batch') == current_batch_ids:
             st.download_button(
                 label="📦 Download All Analyzed Files (ZIP)",
@@ -602,6 +606,29 @@ def main():
         auth.login()
         return
 
+    # --- Access Control & Default Page Logic ---
+    user_services = auth.get_user_services()
+    service_map = {
+        "Application Extractor": "app", "Excel Analyzer": "analyzer",
+        "PTA Services": "pta_services", "CDR Format": "cdr_format",
+        "Vehicle and Mobile": "vehicle_and_mobile", "Admin": "admin",
+        "Settings / Future Tools": "settings"
+    }
+    
+    # Get list of internal page names the user is allowed to see
+    allowed_pages = [service_map[s] for s in user_services if s in service_map]
+    
+    # If the current session page is not allowed (e.g. default 'app' for a restricted user)
+    # Redirect to their first allowed service
+    if st.session_state.get("page") not in allowed_pages:
+        if allowed_pages:
+            st.session_state.page = allowed_pages[0]
+        else:
+            st.error("❌ Access Denied: No services assigned to your account. Please contact Admin.")
+            if st.button("Logout"):
+                auth.logout()
+            return
+
     with st.sidebar:
         st.image("Assets/app_icon.png", width=100)
         
@@ -609,21 +636,16 @@ def main():
         current_tokens = auth.get_tokens()
         st.metric("💰 Tokens", current_tokens)
         
-        user_services = auth.get_user_services()
-        service_map = {
-            "Application Extractor": "app", "Excel Analyzer": "analyzer",
-            "PTA Services": "pta_services", "CDR Format": "cdr_format",
-            "Vehicle and Mobile": "vehicle_and_mobile", "Admin": "admin",
-            "Settings / Future Tools": "settings"
-        }
+        # Sidebar buttons only for allowed services
         for service in user_services:
             if service in service_map:
                 if st.button(service):
                     st.session_state.page = service_map[service]
+        
         if st.button("Logout"):
             auth.logout()
 
-    page = st.session_state.get("page", "app")
+    page = st.session_state.get("page") # Already updated by logic above
     if page == "app": handle_application_extractor()
     elif page == "analyzer": handle_excel_analyzer()
     elif page == "pta_services": handle_pta_services()
