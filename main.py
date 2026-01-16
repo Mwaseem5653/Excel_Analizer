@@ -252,7 +252,8 @@ def handle_application_extractor():
 
     # --- Download ---
     if 'app_extractor_result' in st.session_state and uploaded_files:
-        current_batch_ids = [f.name + str(f.size) for f in uploaded_files]
+        current_config = [str(ai_provider), str(selected_model_name), str(batch_size)]
+        current_batch_ids = [f.name + str(f.size) for f in uploaded_files] + current_config
         if st.session_state.get('app_last_batch') == current_batch_ids:
             st.download_button(
                 label="📥 Download Extracted Data (Excel)",
