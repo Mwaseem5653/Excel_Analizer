@@ -74,9 +74,16 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
             continue
             
         if pd.api.types.is_numeric_dtype(formatted_df[col]):
-            formatted_df[col] = formatted_df[col].apply(
-                lambda x: f" {int(x)}" if pd.notna(x) else x
-            )
+            def format_value(x):
+                if pd.isna(x):
+                    return x
+                # If it has decimals, keep them
+                if isinstance(x, float) and not x.is_integer():
+                    return str(x)
+                # Otherwise format as int string with leading space (for Excel text format)
+                return f" {int(x)}"
+
+            formatted_df[col] = formatted_df[col].apply(format_value)
 
     # -------------------- CLEAN NUMBER (ANALYSIS ONLY) --------------------
     def normalize(num):
