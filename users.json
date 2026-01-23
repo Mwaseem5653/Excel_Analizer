@@ -9,8 +9,10 @@
             "Admin",
             "Vehicle and Mobile"
         ],
-        "tokens": 16585,
-        "eyecon_tokens": 85
+        "tokens": 0,
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 3999
     },
     "dicbranch": {
         "password": "dicbranch",
@@ -21,7 +23,9 @@
             "PTA Services"
         ],
         "tokens": 0,
-        "eyecon_tokens": 0
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
     },
     "noorahmed": {
         "password": "noorahmed",
@@ -34,7 +38,9 @@
             "Vehicle and Mobile"
         ],
         "tokens": 0,
-        "eyecon_tokens": 0
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
     },
     "diclandhi": {
         "password": "diclandhi",
@@ -45,7 +51,9 @@
             "PTA Services"
         ],
         "tokens": 0,
-        "eyecon_tokens": 0
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
     },
     "ameenhazariya": {
         "password": "ameenhazariya",
@@ -55,11 +63,13 @@
             "Vehicle and Mobile"
         ],
         "tokens": 0,
-        "eyecon_tokens": 0
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
     },
     "m.waseem5196@gmail.com": {
         "password": "waseemkhan",
-        "tokens": 100,
+        "tokens": 0,
         "services": [
             "Vehicle and Mobile",
             "Application Extractor",
@@ -68,15 +78,112 @@
             "Eyecon Info",
             "CDR Format"
         ],
-        "eyecon_tokens": 0
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
     },
     "waseem": {
         "password": "waseem",
-        "tokens": 85,
+        "tokens": 0,
         "services": [
             "Excel Analyzer",
             "Eyecon Info"
         ],
-        "eyecon_tokens": 0
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
+    },
+    "khurramahmed": {
+        "password": "khurramahmed",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services"
+        ],
+        "tokens": 0,
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
+    },
+    "dicmalir": {
+        "password": "dicmalir",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services"
+        ],
+        "tokens": 0,
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
+    },
+    "qaiser": {
+        "password": "qaiser",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services"
+        ],
+        "tokens": 0,
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
+    },
+    "abrarzoii": {
+        "password": "abrarzoii",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services"
+        ],
+        "tokens": 0,
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
+    },
+    "masood": {
+        "password": "masood",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services"
+        ],
+        "tokens": 0,
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
+    },
+    "abidfazal": {
+        "password": "abidfazal",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services",
+            "Eyecon Info"
+        ],
+        "tokens": 0,
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
+    },
+    "Abidfazalsb": {
+        "password": "Abidfazalsb",
+        "services": [
+            "Excel Analyzer",
+            "CDR Format",
+            "Vehicle and Mobile",
+            "PTA Services",
+            "Eyecon Info"
+        ],
+        "tokens": 0,
+        "eyecon_tokens": 0,
+        "eyecon_consumed": 0,
+        "eyecon_pool": 0
     }
 }

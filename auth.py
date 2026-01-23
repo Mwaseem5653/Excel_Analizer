@@ -32,7 +32,7 @@ def load_users():
     else:
         with open(USERS_FILE, 'r') as f:
             users = json.load(f)
-            # Migration: Ensure all users have a 'tokens' and 'eyecon_tokens' field
+            # Migration: Ensure all users have a 'tokens', 'eyecon_tokens', 'eyecon_consumed' and 'eyecon_pool' field
             is_modified = False
             for email in users:
                 if "tokens" not in users[email]:
@@ -40,6 +40,12 @@ def load_users():
                     is_modified = True
                 if "eyecon_tokens" not in users[email]:
                     users[email]["eyecon_tokens"] = 0
+                    is_modified = True
+                if "eyecon_consumed" not in users[email]:
+                    users[email]["eyecon_consumed"] = 0
+                    is_modified = True
+                if "eyecon_pool" not in users[email]:
+                    users[email]["eyecon_pool"] = 0
                     is_modified = True
             
             if is_modified:
@@ -130,14 +136,42 @@ def add_tokens(email, amount):
         return True
     return False
 
-def add_eyecon_tokens(email, amount, admin_email="System"):
-    """Adds eyecon tokens and logs it."""
-    if email in USERS:
-        USERS[email]["eyecon_tokens"] = USERS[email].get("eyecon_tokens", 0) + amount
+def get_eyecon_pool(email=None):
+    """Returns the eyecon pool balance for a user (usually admin)."""
+    if email is None:
+        if is_logged_in():
+            email = st.session_state["email"]
+        else:
+            return 0
+    return USERS.get(email, {}).get("eyecon_pool", 0)
+
+def add_eyecon_tokens(target_email, amount, admin_email="System"):
+    """Transfers eyecon tokens from Admin's pool to Target's balance and logs it."""
+    
+    # 1. Check if Admin has enough in Pool
+    admin_pool = USERS.get(admin_email, {}).get("eyecon_pool", 0)
+    
+    # If admin is "System" (e.g. initial setup), we might skip check, but here admin is a user.
+    # We assume the logged-in user (admin_email) is performing the action.
+    
+    if admin_email in USERS:
+        if admin_pool < amount:
+            return "Insufficient Pool Balance"
+        
+        # Deduct from Pool
+        USERS[admin_email]["eyecon_pool"] = admin_pool - amount
+    else:
+        # Fallback if system/unknown admin
+        pass
+
+    # 2. Add to Target
+    if target_email in USERS:
+        USERS[target_email]["eyecon_tokens"] = USERS[target_email].get("eyecon_tokens", 0) + amount
         save_users()
-        log_eyecon_transaction(admin_email, email, amount)
-        return True
-    return False
+        log_eyecon_transaction(admin_email, target_email, amount)
+        return "Success"
+    
+    return "User not found"
 
 def deduct_tokens(amount, email=None):
     """Deducts tokens from a user's balance if sufficient funds exist."""
@@ -165,6 +199,7 @@ def deduct_eyecon_tokens(amount, email=None):
     current = USERS.get(email, {}).get("eyecon_tokens", 0)
     if current >= amount:
         USERS[email]["eyecon_tokens"] = current - amount
+        USERS[email]["eyecon_consumed"] = USERS[email].get("eyecon_consumed", 0) + amount
         save_users()
         return True
     return False
@@ -178,6 +213,23 @@ def logout():
 def admin_section():
     """Displays the admin panel for user management."""
     st.title("Admin Section")
+    
+    # --- Eyecon Pool Stats ---
+    admin_email = st.session_state.get("email")
+    pool_balance = get_eyecon_pool(admin_email)
+    
+    # Calculate Total Issued from Logs or Current Balances
+    # Let's use current balances for "Active Issued"
+    total_active_issued = sum(u.get("eyecon_tokens", 0) for u in USERS.values())
+    
+    st.markdown("### 🏦 Eyecon Token Stats")
+    col_stat1, col_stat2 = st.columns(2)
+    with col_stat1:
+        st.metric("🎱 Admin Pool (Remaining)", pool_balance)
+    with col_stat2:
+        st.metric("📤 Total Active Issued", total_active_issued)
+    st.write("---")
+
     st.subheader("Manage Users and Permissions")
 
     col1, col2 = st.columns(2)
@@ -200,28 +252,36 @@ def admin_section():
     # --- Eyecon Token Management ---
     with col2:
         st.write("### 👁️ Issue Eyecon Tokens")
+        # Subheading removed as requested
         with st.form("issue_eyecon_tokens_form"):
             e_user_to_issue = st.selectbox("Select User (Eyecon)", list(USERS.keys()))
             e_tokens_to_add = st.number_input("Eyecon Tokens Amount", min_value=1, value=100, step=10)
             
             e_issue_submitted = st.form_submit_button("Issue Eyecon Tokens")
             if e_issue_submitted:
-                admin_email = st.session_state.get("email", "Admin")
-                if add_eyecon_tokens(e_user_to_issue, e_tokens_to_add, admin_email):
-                    st.success(f"Successfully added {e_tokens_to_add} Eyecon tokens to {e_user_to_issue}")
+                result = add_eyecon_tokens(e_user_to_issue, e_tokens_to_add, admin_email)
+                if result == "Success":
+                    st.success(f"Successfully issued {e_tokens_to_add} Eyecon tokens to {e_user_to_issue}")
                     st.rerun()
+                elif result == "Insufficient Pool Balance":
+                    st.error(f"❌ Insufficient Pool Balance! You have {pool_balance}, trying to issue {e_tokens_to_add}.")
                 else:
                     st.error("Failed to add Eyecon tokens.")
 
     st.write("---")
 
     # Display current users
-    st.write("### Current Users")
-    for email, data in USERS.items():
-        st.write(f"**Email:** {email}")
-        st.write(f"**Tokens:** {data.get('tokens', 0)} | **Eyecon Tokens:** {data.get('eyecon_tokens', 0)}")
-        st.write(f"**Services:** {', '.join(data['services'])}")
-        st.write("---")
+    st.write("### User Management")
+    if st.button("👥 View/Refresh All Users"):
+        st.session_state.show_users = not st.session_state.get('show_users', False)
+
+    if st.session_state.get('show_users'):
+        for email, data in USERS.items():
+            st.write(f"**Email:** {email}")
+            st.write(f"**Tokens:** {data.get('tokens', 0)} | **Eyecon Tokens:** {data.get('eyecon_tokens', 0)}")
+            st.write(f"**Eyecon Consumed:** {data.get('eyecon_consumed', 0)}")
+            st.write(f"**Services:** {', '.join(data['services'])}")
+            st.write("---")
 
     # Eyecon Logs
     st.write("### 📜 Eyecon Token Logs")
