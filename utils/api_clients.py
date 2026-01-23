@@ -100,14 +100,14 @@ async def get_providers_proxy(accountNumber: str):
             return {"error": str(e)}
 
 def get_eyecon_info(number: str, code: str = "92"):
-    rapid_api_key = os.getenv("RAPID_API_KEY")
+    rapid_api_key = os.getenv("RAPID_API_KEY", "76590bef8fmshe2ed5dc341f89e2p1d75d3jsn4edec491e6c9")
     if not rapid_api_key:
         return {"error": "RAPID_API_KEY not found in environment variables."}
 
-    url = "https://eyecon3.p.rapidapi.com/api/v1/search"
+    url = "https://eyecon.p.rapidapi.com/api/v1/search"
     headers = {
         "x-rapidapi-key": rapid_api_key,
-        "x-rapidapi-host": "eyecon3.p.rapidapi.com"
+        "x-rapidapi-host": "eyecon.p.rapidapi.com"
     }
     params = {
         "code": code,
