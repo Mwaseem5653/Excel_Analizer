@@ -173,14 +173,21 @@ def handle_application_extractor():
             file_data = asyncio.run(handle_files(message))
             all_extracted_data = []
 
+            import gc
+            progress_bar = st.progress(0)
+            status_placeholder = st.empty()
+            
             for i, file in enumerate(file_data):
+                progress_bar.progress((i + 1) / len(file_data))
+                
                 if "error" in file:
                     st.error(f"❌ {file['file_name']}: {file['error']}")
                     continue
                 
                 if i > 0 and i % batch_size == 0:
-                    st.warning(f"⏳ Batch completed. Cooling down for 60 seconds...")
-                    time.sleep(60)
+                    with status_placeholder.container():
+                        st.warning(f"⏳ Batch completed. Cooling down for 60 seconds...")
+                        time.sleep(60)
                 
                 path = file["path"]
                 ext = os.path.splitext(path)[1].lower()
@@ -191,54 +198,67 @@ def handle_application_extractor():
                     pix = doc.load_page(page_num).get_pixmap()
                     image_bytes = pix.tobytes("png")
                     mime_type = "image/png"
+                    doc.close() # Close doc to free memory
                 else:
                     with open(path, "rb") as f:
                         image_bytes = f.read()
                     mime_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png"
 
-                st.info(f"Processing file: {file['file_name']}")
+                # Use the placeholder to update UI instead of appending
+                with status_placeholder.container():
+                    st.info(f"Processing file: {file['file_name']}")
 
-                prompt = (
-                    "Extract ONLY the following fields from this handwritten Urdu police application image. "
-                    "this application is reporting of snatching /theft/lost of mobile phone and other properties. for police"
-                    "Kindly answer in roman urdu and dont puzzle if there is no macth simply write None. "
-                    "Output PLAIN TEXT ONLY, "
-                    "Follow EXACT field names and order:\n\n"
-                    "only return following fields\n"
-                    "Name: <applicant name (victam of incident) >\n"
-                    "Phone Number: <judge from context which phone number is active, or None>\n"
-                    "IMEI Number: <all IMEIs separated by space or None>\n"
-                    "Last Num Used: <judge from context which phone number was snatched , or None>\n"
-                    "Mobile Model: <models name all phones or None>\n"
-                    "Other Property: <snatched properties like cash bike wallet etc or None>\n"
-                    "Date Of Offence: <DD.MM.YYYY or None>\n"
-                    "Time Of Offence: <HH:MM AM/PM or None>\n"
-                    "Type: <Snatched/Theft/Lost judge incident in which catogery lies or None>\n"
-                    "Police Station: < Example Ps-Zamatown , Ps-Korangi , Ps-Landhi , Ps-Shahfaisal , Ps-Alflah etc ps name methin start of aplication like than zamantown >\n\n"
-                )
+                    prompt = (
+                        "Extract ONLY the following fields from this handwritten Urdu police application image. "
+                        "this application is reporting of snatching /theft/lost of mobile phone and other properties. for police"
+                        "Kindly answer in roman urdu and dont puzzle if there is no macth simply write None. "
+                        "Output PLAIN TEXT ONLY, "
+                        "Follow EXACT field names and order:\n\n"
+                        "only return following fields\n"
+                        "Name: <applicant name (victam of incident) >\n"
+                        "Phone Number: <judge from context which phone number is active, or None>\n"
+                        "IMEI Number: <all IMEIs separated by space or None>\n"
+                        "Last Num Used: <judge from context which phone number was snatched , or None>\n"
+                        "Mobile Model: <models name all phones or None>\n"
+                        "Other Property: <snatched properties like cash bike wallet etc or None>\n"
+                        "Date Of Offence: <DD.MM.YYYY or None>\n"
+                        "Time Of Offence: <HH:MM AM/PM or None>\n"
+                        "Type: <Snatched/Theft/Lost judge incident in which catogery lies or None>\n"
+                        "Police Station: < Example Ps-Zamatown , Ps-Korangi , Ps-Landhi , Ps-Shahfaisal , Ps-Alflah etc ps name methin start of aplication like than zamantown >\n\n"
+                    )
 
-                raw_text = ""
-                try:
-                    if ai_provider == "Gemini":
-                        model = genai.GenerativeModel(selected_model_name)
-                        response = model.generate_content(
-                            [prompt, {"mime_type": "image/jpeg", "data": image_bytes}]
-                        )
-                        raw_text = response.text
-                    elif ai_provider == "Groq":
-                        base64_image = base64.b64encode(image_bytes).decode('utf-8')
-                        chat_completion = client.chat.completions.create(
-                            messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}]}],
-                            model=selected_model_name, temperature=0.1, max_tokens=1024
-                        )
-                        raw_text = chat_completion.choices[0].message.content
-                except Exception as e:
-                    st.error(f"❌ AI Error: {str(e)}")
-                    continue
+                    raw_text = ""
+                    try:
+                        if ai_provider == "Gemini":
+                            model = genai.GenerativeModel(selected_model_name)
+                            response = model.generate_content(
+                                [prompt, {"mime_type": "image/jpeg", "data": image_bytes}]
+                            )
+                            raw_text = response.text
+                        elif ai_provider == "Groq":
+                            base64_image = base64.b64encode(image_bytes).decode('utf-8')
+                            chat_completion = client.chat.completions.create(
+                                messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{base64_image}"}}]}],
+                                model=selected_model_name, temperature=0.1, max_tokens=1024
+                            )
+                            raw_text = chat_completion.choices[0].message.content
+                    except Exception as e:
+                        st.error(f"❌ AI Error: {str(e)}")
+                        continue
 
-                st.text_area(f"📝 Extracted Text ({file['file_name']}):", raw_text, height=150)
+                    st.text_area(f"📝 Extracted Text ({file['file_name']}):", raw_text, height=150)
+                
                 extracted_data = extract_fields_from_text(raw_text)
                 all_extracted_data.append(extracted_data)
+                
+                # Cleanup memory
+                del image_bytes
+                del raw_text
+                gc.collect()
+
+            # Clear placeholder after loop
+            progress_bar.empty()
+            status_placeholder.empty()
 
             excel_path = save_to_excel(all_extracted_data)
             with open(excel_path, "rb") as f:
@@ -315,9 +335,9 @@ def handle_excel_analyzer():
     
             else:
     
-                eyecon_top_n = 10
+                eyecon_top_n = 5
     
-                st.number_input("Top N Records for Eyecon", value=10, disabled=True, help="Top Ten user finds on eyecon.")
+                st.number_input("Top N Records for Eyecon", value=5, disabled=True, help="Top 5 records user finds on eyecon (Default Limit).")
     
     
     
@@ -381,34 +401,45 @@ def handle_excel_analyzer():
     
                 if new_files:
     
+                    # 1. Normal Token Cost
                     cost_per_file = 15
-    
                     total_cost = len(new_files) * cost_per_file
-    
                     
-    
+                    # 2. Eyecon Token Cost
+                    total_eyecon_cost = 0
+                    if check_eyecon_info:
+                        total_eyecon_cost = len(new_files) * int(eyecon_top_n) * 1 # 1 token per lookup
+                    
+                    
                     current_tokens = auth.get_tokens()
-    
+                    current_eyecon_tokens = auth.get_eyecon_tokens()
+
+                    # Check Normal Tokens
                     if current_tokens < total_cost:
-    
-                         st.error(f"⚠️ Insufficient Tokens! You need {total_cost} but have {current_tokens}.")
-    
+                         st.error(f"⚠️ Insufficient Tokens! You need {total_cost} tokens but have {current_tokens}.")
                          return
+                    
+                    # Check Eyecon Tokens
+                    if check_eyecon_info and current_eyecon_tokens < total_eyecon_cost:
+                        st.error(f"⚠️ Insufficient Eyecon Tokens! You need {total_eyecon_cost} Eyecon tokens but have {current_eyecon_tokens}.")
+                        return
     
     
-    
-                    if auth.deduct_tokens(total_cost):
-    
+                    # Deduct Both
+                    normal_deduction = auth.deduct_tokens(total_cost)
+                    eyecon_deduction = True
+                    if check_eyecon_info:
+                        eyecon_deduction = auth.deduct_eyecon_tokens(total_eyecon_cost)
+
+                    if normal_deduction and eyecon_deduction:
                         for f in new_files:
-    
                             st.session_state.analyzer_paid_files.add(f.name)
-    
-                        st.success(f"💰 {total_cost} tokens deducted for {len(new_files)} new files.")
-    
+                        msg = f"💰 {total_cost} tokens deducted for {len(new_files)} new files."
+                        if total_eyecon_cost > 0:
+                            msg += f" (And {total_eyecon_cost} Eyecon tokens)."
+                        st.success(msg)
                     else:
-    
                          st.error("Token deduction failed.")
-    
                          return
     
                 
@@ -517,9 +548,13 @@ def handle_excel_analyzer():
 def handle_pta_services():
     import io
     import pandas as pd
-    from utils.operator_lookup import find_operators_and_download
+    from utils.operator_lookup import find_operators_and_download, local_lookup_operators
 
     st.title("PTA Services - Operator Lookup and Sorted Export")
+    
+    # --- Mode Toggle ---
+    use_online_api = st.toggle("Enable API Lookup (Online)", value=False, help="When OFF, identifies operator by prefix (Free, Limit 100). When ON, uses live API (4 Tokens/No, Limit 10).")
+
     st.subheader("Enter Phone Numbers for Lookup and Sorting")
     phone_numbers_input = st.text_area("Enter phone numbers, one per line:", key="phone_numbers_input_single_section")
 
@@ -532,27 +567,41 @@ def handle_pta_services():
                 if normalized:
                     phone_numbers.append(normalized)
 
-            phone_numbers = phone_numbers[:10]
+            # --- Limit and Logic based on Toggle ---
+            if use_online_api:
+                limit = 10
+                mode_name = "Online (API)"
+            else:
+                limit = 100
+                mode_name = "Offline (Prefix)"
+
+            phone_numbers = phone_numbers[:limit]
             
-            # Token Check
+            # Token Check (Only for Online API)
             if phone_numbers:
-                cost_per_number = 4
-                total_cost = len(phone_numbers) * cost_per_number
-                
-                current_tokens = auth.get_tokens()
-                if current_tokens < total_cost:
-                    st.error(f"⚠️ Insufficient Tokens! You need {total_cost} tokens but have {current_tokens}. Please top up.")
-                    return # Stop execution
+                if use_online_api:
+                    cost_per_number = 4
+                    total_cost = len(phone_numbers) * cost_per_number
+                    
+                    current_tokens = auth.get_tokens()
+                    if current_tokens < total_cost:
+                        st.error(f"⚠️ Insufficient Tokens! You need {total_cost} tokens but have {current_tokens}. Please top up.")
+                        return 
 
-                if not auth.deduct_tokens(total_cost):
-                     st.error("Transaction failed during token deduction.")
-                     return
-
-                st.success(f"💰 Deducted {total_cost} tokens.")
+                    if not auth.deduct_tokens(total_cost):
+                         st.error("Transaction failed during token deduction.")
+                         return
+                    st.success(f"💰 Deducted {total_cost} tokens for Online lookup.")
+                else:
+                    st.info(f"⚡ Processing {len(phone_numbers)} numbers using {mode_name} mode (Free).")
 
                 try:
-                    excel_path_dummy, lookup_results_data = find_operators_and_download(phone_numbers) 
-                    st.subheader("Processing Results")
+                    if use_online_api:
+                        excel_path_dummy, lookup_results_data = find_operators_and_download(phone_numbers) 
+                    else:
+                        excel_path_dummy, lookup_results_data = local_lookup_operators(phone_numbers)
+
+                    st.subheader(f"Processing Results ({mode_name})")
                     
                     operator_groups = {
                         "Jazz Pakistan": [], "Zong Pakistan": [], "Telenor Pakistan": [],
@@ -606,12 +655,17 @@ def handle_cdr_format():
     import re
 
     st.title("📝 CDR Format")
-    st.info("Select an HTML template to view and see numbers from PTA Services filtered by category.")
+    st.info("Select an HTML template or generate all at once to see results from PTA Services.")
 
-    if st.button("Clear Filtered Numbers", key="clear_filtered_numbers_top"):
-        st.session_state.pta_results_for_cdr = []
-        st.session_state.selected_cdr_html = None 
-        st.rerun()
+    col_ctrl1, col_ctrl2 = st.columns([4, 1])
+    with col_ctrl1:
+        if st.button("🚀 Generate All Formats at Once", type="primary"):
+            st.session_state.selected_cdr_html = "SHOW_ALL"
+    with col_ctrl2:
+        if st.button("Clear All", key="clear_filtered_numbers_top"):
+            st.session_state.pta_results_for_cdr = []
+            st.session_state.selected_cdr_html = None 
+            st.rerun()
 
     html_files_to_process = {
         "Jazz CDR HTML": {"file": "jazz cdr 6 MONTH.html", "operator_key": "Jazz Pakistan"},
@@ -632,14 +686,20 @@ def handle_cdr_format():
             if st.button(button_label, key=f"cdr_html_button_{button_label}"):
                 st.session_state.selected_cdr_html = file_info
 
-    if st.session_state.selected_cdr_html:
-        selected_file_name = st.session_state.selected_cdr_html["file"]
-        target_operator_key = st.session_state.selected_cdr_html["operator_key"]
+    def render_cdr_template(file_info):
+        selected_file_name = file_info["file"]
+        target_operator_key = file_info["operator_key"]
 
         filtered_numbers_for_html = []
         if "pta_results_for_cdr" in st.session_state and st.session_state.pta_results_for_cdr:
             for item in st.session_state.pta_results_for_cdr:
-                if target_operator_key.lower().replace(" pakistan", "") in item["Detected Operator"].lower().replace(" pakistan", ""):
+                op_match = False
+                if target_operator_key == "All Operators":
+                    op_match = True
+                elif target_operator_key.lower().replace(" pakistan", "") in item["Detected Operator"].lower().replace(" pakistan", ""):
+                    op_match = True
+                
+                if op_match:
                     filtered_numbers_for_html.append(item["Phone Number"])
 
         numbers_to_inject = "\n".join(filtered_numbers_for_html)
@@ -670,9 +730,19 @@ def handle_cdr_format():
             </script>
             """
             modified_html_content = modified_html_content.replace('</body>', f'{script_to_inject}</body>')
-            st.components.v1.html(modified_html_content, height=750, scrolling=True)
+            st.components.v1.html(modified_html_content, height=400, scrolling=True)
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error loading {selected_file_name}: {e}")
+
+    if st.session_state.selected_cdr_html:
+        if st.session_state.selected_cdr_html == "SHOW_ALL":
+            st.write("---")
+            for label, info in html_files_to_process.items():
+                st.markdown(f"### 📄 {label}")
+                render_cdr_template(info)
+                st.write("---")
+        else:
+            render_cdr_template(st.session_state.selected_cdr_html)
 
 def show_main_app():
     import pandas as pd
@@ -780,8 +850,11 @@ def main():
         st.image("Assets/app_icon.png", width=100)
         
         # Display Tokens
-        current_tokens = auth.get_tokens()
-        st.metric("💰 Tokens", current_tokens)
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            st.metric("💰 Tokens", auth.get_tokens())
+        with col_t2:
+            st.metric("👁️ Eyecon", auth.get_eyecon_tokens())
         
         # Sidebar buttons only for allowed services
         for service in user_services:

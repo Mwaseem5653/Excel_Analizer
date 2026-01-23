@@ -1,9 +1,11 @@
 import streamlit as st
 import json
 import os
+import datetime
 
 # Define the path for the users JSON file
 USERS_FILE = "users.json"
+EYECON_LOGS_FILE = "eyecon_logs.json"
 
 def load_users():
     """Loads users from the JSON file. If the file doesn't exist, creates it with a default admin."""
@@ -12,6 +14,7 @@ def load_users():
             "jerrynaeem19@gmail.com": {
                 "password": "Pakistan1122@",
                 "tokens": 100, # Default tokens for admin
+                "eyecon_tokens": 0,
                 "services": [
                     "Application Extractor",
                     "Excel Analyzer",
@@ -29,11 +32,14 @@ def load_users():
     else:
         with open(USERS_FILE, 'r') as f:
             users = json.load(f)
-            # Migration: Ensure all users have a 'tokens' field
+            # Migration: Ensure all users have a 'tokens' and 'eyecon_tokens' field
             is_modified = False
             for email in users:
                 if "tokens" not in users[email]:
                     users[email]["tokens"] = 0
+                    is_modified = True
+                if "eyecon_tokens" not in users[email]:
+                    users[email]["eyecon_tokens"] = 0
                     is_modified = True
             
             if is_modified:
@@ -48,6 +54,29 @@ def save_users():
 
 # Load users at the start of the application
 USERS = load_users()
+
+def get_eyecon_logs():
+    """Loads eyecon logs from JSON."""
+    if not os.path.exists(EYECON_LOGS_FILE):
+        return []
+    try:
+        with open(EYECON_LOGS_FILE, 'r') as f:
+            return json.load(f)
+    except:
+        return []
+
+def log_eyecon_transaction(admin_email, target_user, amount):
+    """Logs the issuance of eyecon tokens."""
+    logs = get_eyecon_logs()
+    entry = {
+        "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "admin": admin_email,
+        "user": target_user,
+        "amount": amount
+    }
+    logs.append(entry)
+    with open(EYECON_LOGS_FILE, 'w') as f:
+        json.dump(logs, f, indent=4)
 
 def login():
     """Displays the login form."""
@@ -84,11 +113,29 @@ def get_tokens(email=None):
             return 0
     return USERS.get(email, {}).get("tokens", 0)
 
+def get_eyecon_tokens(email=None):
+    """Returns the eyecon token balance for a user."""
+    if email is None:
+        if is_logged_in():
+            email = st.session_state["email"]
+        else:
+            return 0
+    return USERS.get(email, {}).get("eyecon_tokens", 0)
+
 def add_tokens(email, amount):
     """Adds tokens to a user's balance."""
     if email in USERS:
         USERS[email]["tokens"] = USERS[email].get("tokens", 0) + amount
         save_users()
+        return True
+    return False
+
+def add_eyecon_tokens(email, amount, admin_email="System"):
+    """Adds eyecon tokens and logs it."""
+    if email in USERS:
+        USERS[email]["eyecon_tokens"] = USERS[email].get("eyecon_tokens", 0) + amount
+        save_users()
+        log_eyecon_transaction(admin_email, email, amount)
         return True
     return False
 
@@ -107,6 +154,21 @@ def deduct_tokens(amount, email=None):
         return True
     return False
 
+def deduct_eyecon_tokens(amount, email=None):
+    """Deducts eyecon tokens from a user's balance."""
+    if email is None:
+        if is_logged_in():
+            email = st.session_state["email"]
+        else:
+            return False
+            
+    current = USERS.get(email, {}).get("eyecon_tokens", 0)
+    if current >= amount:
+        USERS[email]["eyecon_tokens"] = current - amount
+        save_users()
+        return True
+    return False
+
 def logout():
     """Logs the user out and clears the session."""
     for key in list(st.session_state.keys()):
@@ -118,29 +180,99 @@ def admin_section():
     st.title("Admin Section")
     st.subheader("Manage Users and Permissions")
 
+    col1, col2 = st.columns(2)
+
     # --- Token Management ---
-    st.write("### 💰 Issue Tokens")
-    with st.form("issue_tokens_form"):
-        user_to_issue = st.selectbox("Select User", list(USERS.keys()))
-        tokens_to_add = st.number_input("Tokens Amount", min_value=1, value=100, step=10)
-        
-        issue_submitted = st.form_submit_button("Issue Tokens")
-        if issue_submitted:
-            if add_tokens(user_to_issue, tokens_to_add):
-                st.success(f"Successfully added {tokens_to_add} tokens to {user_to_issue}")
-                st.rerun()
-            else:
-                st.error("Failed to add tokens.")
+    with col1:
+        st.write("### 💰 Issue General Tokens")
+        with st.form("issue_tokens_form"):
+            user_to_issue = st.selectbox("Select User", list(USERS.keys()))
+            tokens_to_add = st.number_input("Tokens Amount", min_value=1, value=100, step=10)
+            
+            issue_submitted = st.form_submit_button("Issue Tokens")
+            if issue_submitted:
+                if add_tokens(user_to_issue, tokens_to_add):
+                    st.success(f"Successfully added {tokens_to_add} tokens to {user_to_issue}")
+                    st.rerun()
+                else:
+                    st.error("Failed to add tokens.")
     
+    # --- Eyecon Token Management ---
+    with col2:
+        st.write("### 👁️ Issue Eyecon Tokens")
+        with st.form("issue_eyecon_tokens_form"):
+            e_user_to_issue = st.selectbox("Select User (Eyecon)", list(USERS.keys()))
+            e_tokens_to_add = st.number_input("Eyecon Tokens Amount", min_value=1, value=100, step=10)
+            
+            e_issue_submitted = st.form_submit_button("Issue Eyecon Tokens")
+            if e_issue_submitted:
+                admin_email = st.session_state.get("email", "Admin")
+                if add_eyecon_tokens(e_user_to_issue, e_tokens_to_add, admin_email):
+                    st.success(f"Successfully added {e_tokens_to_add} Eyecon tokens to {e_user_to_issue}")
+                    st.rerun()
+                else:
+                    st.error("Failed to add Eyecon tokens.")
+
     st.write("---")
 
     # Display current users
     st.write("### Current Users")
     for email, data in USERS.items():
         st.write(f"**Email:** {email}")
-        st.write(f"**Tokens:** {data.get('tokens', 0)}")
+        st.write(f"**Tokens:** {data.get('tokens', 0)} | **Eyecon Tokens:** {data.get('eyecon_tokens', 0)}")
         st.write(f"**Services:** {', '.join(data['services'])}")
         st.write("---")
+
+    # Eyecon Logs
+    st.write("### 📜 Eyecon Token Logs")
+    logs = get_eyecon_logs()
+    
+    if logs:
+        # 1. Summarize by User
+        summary = {}
+        for entry in logs:
+            user = entry.get("user")
+            amount = entry.get("amount", 0)
+            if user:
+                summary[user] = summary.get(user, 0) + amount
+        
+        # Display Summary
+        st.write("#### Issued Tokens Summary (Per User)")
+        if summary:
+            st.table([{"User": u, "Total Issued": t} for u, t in summary.items()])
+        
+        # Display Detailed Logs
+        st.write("#### Detailed Logs")
+        st.dataframe(logs)
+
+        # Download Button
+        csv_data = json.dumps(logs, indent=4) # Using JSON for now as it's simple list of dicts
+        # Or better, convert to CSV string manually or use pandas if available (but let's stick to simple json/text for no deps issue here, actually user asked for file)
+        
+        # Let's make a CSV string
+        header = ["timestamp", "admin", "user", "amount"]
+        csv_rows = [",".join(header)]
+        for entry in logs:
+            row = [
+                str(entry.get("timestamp", "")),
+                str(entry.get("admin", "")),
+                str(entry.get("user", "")),
+                str(entry.get("amount", ""))
+            ]
+            csv_rows.append(",".join(row))
+        csv_string = "\n".join(csv_rows)
+
+        st.download_button(
+            label="📥 Download Logs (CSV)",
+            data=csv_string,
+            file_name="eyecon_token_logs.csv",
+            mime="text/csv"
+        )
+
+    else:
+        st.info("No logs found.")
+    
+    st.write("---")
 
     # Add a new user
     st.write("### Add a new user")
@@ -155,6 +287,7 @@ def admin_section():
         ]
         selected_services = st.multiselect("Select services for the new user", all_services)
         initial_tokens = st.number_input("Initial Tokens", min_value=0, value=0)
+        initial_eyecon_tokens = st.number_input("Initial Eyecon Tokens", min_value=0, value=0)
         
         submitted = st.form_submit_button("Add User")
         if submitted:
@@ -162,6 +295,7 @@ def admin_section():
                 USERS[new_email] = {
                     "password": new_password,
                     "tokens": initial_tokens,
+                    "eyecon_tokens": initial_eyecon_tokens,
                     "services": selected_services
                 }
                 save_users() # Save changes to the file

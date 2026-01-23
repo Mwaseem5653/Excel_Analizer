@@ -9,7 +9,8 @@
             "Admin",
             "Vehicle and Mobile"
         ],
-        "tokens": 22
+        "tokens": 16660,
+        "eyecon_tokens": 0
     },
     "dicbranch": {
         "password": "dicbranch",
@@ -19,7 +20,8 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0
+        "tokens": 0,
+        "eyecon_tokens": 0
     },
     "noorahmed": {
         "password": "noorahmed",
@@ -31,7 +33,8 @@
             "Admin",
             "Vehicle and Mobile"
         ],
-        "tokens": 0
+        "tokens": 0,
+        "eyecon_tokens": 0
     },
     "diclandhi": {
         "password": "diclandhi",
@@ -41,7 +44,8 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0
+        "tokens": 0,
+        "eyecon_tokens": 0
     },
     "ameenhazariya": {
         "password": "ameenhazariya",
@@ -50,7 +54,8 @@
             "CDR Format",
             "Vehicle and Mobile"
         ],
-        "tokens": 0
+        "tokens": 0,
+        "eyecon_tokens": 0
     },
     "m.waseem5196@gmail.com": {
         "password": "waseemkhan",
@@ -62,7 +67,8 @@
             "Excel Analyzer",
             "Eyecon Info",
             "CDR Format"
-        ]
+        ],
+        "eyecon_tokens": 0
     },
     "waseem": {
         "password": "waseem",
@@ -70,6 +76,7 @@
         "services": [
             "Excel Analyzer",
             "Eyecon Info"
-        ]
+        ],
+        "eyecon_tokens": 0
     }
 }
