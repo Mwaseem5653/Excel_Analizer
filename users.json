@@ -9,10 +9,9 @@
             "Admin",
             "Vehicle and Mobile"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 3999
+        "eyecon_pool": 2942
     },
     "dicbranch": {
         "password": "dicbranch",
@@ -22,7 +21,7 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -37,7 +36,7 @@
             "Admin",
             "Vehicle and Mobile"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -50,7 +49,7 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -62,14 +61,14 @@
             "CDR Format",
             "Vehicle and Mobile"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
     },
     "m.waseem5196@gmail.com": {
         "password": "waseemkhan",
-        "tokens": 0,
+        "tokens": 500,
         "services": [
             "Vehicle and Mobile",
             "Application Extractor",
@@ -84,7 +83,7 @@
     },
     "waseem": {
         "password": "waseem",
-        "tokens": 0,
+        "tokens": 500,
         "services": [
             "Excel Analyzer",
             "Eyecon Info"
@@ -101,7 +100,7 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -114,7 +113,7 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -127,7 +126,7 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -140,7 +139,7 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -153,7 +152,7 @@
             "Vehicle and Mobile",
             "PTA Services"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -167,7 +166,7 @@
             "PTA Services",
             "Eyecon Info"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
@@ -181,7 +180,7 @@
             "PTA Services",
             "Eyecon Info"
         ],
-        "tokens": 0,
+        "tokens": 500,
         "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
