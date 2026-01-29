@@ -20,7 +20,7 @@ def get_phone_info(phone_number: str):
             api_url,
             params=params,
             headers=headers,
-            timeout=10
+            timeout=15
         )
 
         if response.status_code != 200:

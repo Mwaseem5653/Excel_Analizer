@@ -135,22 +135,20 @@ def analyze_excel(file_path, top_n=15, enable_lookup=True, enable_eyecon_lookup=
                 pass
             return idx, raw_num, None, None, None
 
-        # Execute in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_idx = {executor.submit(fetch_phone_details, idx): idx for idx in top_indices}
+        # Execute sequentially (Single Thread)
+        for idx in top_indices:
+            idx, raw_num, name_val, cnic_val, addr_val = fetch_phone_details(idx)
             
-            for future in concurrent.futures.as_completed(future_to_idx):
-                idx, raw_num, name_val, cnic_val, addr_val = future.result()
-                if name_val is not None:
-                    mobile_summary.at[idx, "Name"] = name_val
-                    mobile_summary.at[idx, "CNIC"] = " " + str(cnic_val) if cnic_val else ""
-                    mobile_summary.at[idx, "Address"] = addr_val
-                    
-                    if raw_num not in lookup_cache:
-                         lookup_cache[raw_num] = {}
-                    lookup_cache[raw_num]["Name"] = name_val
-                    lookup_cache[raw_num]["CNIC"] = " " + str(cnic_val) if cnic_val else ""
-                    lookup_cache[raw_num]["Address"] = addr_val
+            if name_val is not None:
+                mobile_summary.at[idx, "Name"] = name_val
+                mobile_summary.at[idx, "CNIC"] = " " + str(cnic_val) if cnic_val else ""
+                mobile_summary.at[idx, "Address"] = addr_val
+                
+                if raw_num not in lookup_cache:
+                        lookup_cache[raw_num] = {}
+                lookup_cache[raw_num]["Name"] = name_val
+                lookup_cache[raw_num]["CNIC"] = " " + str(cnic_val) if cnic_val else ""
+                lookup_cache[raw_num]["Address"] = addr_val
 
     # -------------------- FETCH EYECON INFO (PARALLEL) --------------------
     eyecon_cache = {}

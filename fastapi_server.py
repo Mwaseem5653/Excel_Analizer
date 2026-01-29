@@ -26,7 +26,7 @@ async def home():
 
 @app.get("/lookup")
 def lookup(number: str, code: str = "92"):  # default 92
-    rapid_api_key = os.getenv("RAPID_API_KEY", "76590bef8fmshe2ed5dc341f89e2p1d75d3jsn4edec491e6c9")
+    rapid_api_key = os.getenv("RAPID_API_KEY")
     url = "https://eyecon.p.rapidapi.com/api/v1/search"
 
     headers = {
