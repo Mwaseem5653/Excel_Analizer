@@ -9,9 +9,10 @@
             "Admin",
             "Vehicle and Mobile"
         ],
-        "tokens": 187,
-        "eyecon_tokens": 798,
-        "eyecon_pool": 1463
+        "tokens": 183,
+        "eyecon_tokens": 0,
+        "eyecon_pool": 3998,
+        "eyecon_consumed": 0
     },
     "dicbranch": {
         "password": "dicbranch",
@@ -37,7 +38,7 @@
             "Vehicle and Mobile"
         ],
         "tokens": 500,
-        "eyecon_tokens": 100,
+        "eyecon_tokens": 0,
         "eyecon_consumed": 0,
         "eyecon_pool": 0
     },
