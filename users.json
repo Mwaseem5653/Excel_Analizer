@@ -10,8 +10,7 @@
             "Vehicle and Mobile"
         ],
         "tokens": 183,
-        "eyecon_tokens": 0,
-        "eyecon_pool": 3998,
+        "eyecon_tokens": 100,
         "eyecon_consumed": 0
     },
     "dicbranch": {
@@ -24,8 +23,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "noorahmed": {
         "password": "noorahmed",
@@ -39,8 +37,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "diclandhi": {
         "password": "diclandhi",
@@ -52,8 +49,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "ameenhazariya": {
         "password": "ameenhazariya",
@@ -64,8 +60,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "m.waseem5196@gmail.com": {
         "password": "waseemkhan",
@@ -79,8 +74,7 @@
             "CDR Format"
         ],
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "waseem": {
         "password": "waseem",
@@ -90,8 +84,7 @@
             "Eyecon Info"
         ],
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "khurramahmed": {
         "password": "khurramahmed",
@@ -103,8 +96,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "dicmalir": {
         "password": "dicmalir",
@@ -116,8 +108,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "qaiser": {
         "password": "qaiser",
@@ -129,8 +120,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "abrarzoii": {
         "password": "abrarzoii",
@@ -142,8 +132,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "masood": {
         "password": "masood",
@@ -155,8 +144,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "abidfazal": {
         "password": "abidfazal",
@@ -169,8 +157,7 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     },
     "Abidfazalsb": {
         "password": "Abidfazalsb",
@@ -183,7 +170,6 @@
         ],
         "tokens": 500,
         "eyecon_tokens": 0,
-        "eyecon_consumed": 0,
-        "eyecon_pool": 0
+        "eyecon_consumed": 0
     }
 }

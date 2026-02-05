@@ -32,7 +32,7 @@ def load_users():
     else:
         with open(USERS_FILE, 'r') as f:
             users = json.load(f)
-            # Migration: Ensure all users have a 'tokens', 'eyecon_tokens', 'eyecon_consumed' and 'eyecon_pool' field
+            # Migration: Ensure all users have a 'tokens', 'eyecon_tokens', and 'eyecon_consumed' field
             is_modified = False
             for email in users:
                 if "tokens" not in users[email]:
@@ -43,9 +43,6 @@ def load_users():
                     is_modified = True
                 if "eyecon_consumed" not in users[email]:
                     users[email]["eyecon_consumed"] = 0
-                    is_modified = True
-                if "eyecon_pool" not in users[email]:
-                    users[email]["eyecon_pool"] = 0
                     is_modified = True
             
             if is_modified:
@@ -136,35 +133,10 @@ def add_tokens(email, amount):
         return True
     return False
 
-def get_eyecon_pool(email=None):
-    """Returns the eyecon pool balance for a user (usually admin)."""
-    if email is None:
-        if is_logged_in():
-            email = st.session_state["email"]
-        else:
-            return 0
-    return USERS.get(email, {}).get("eyecon_pool", 0)
-
 def add_eyecon_tokens(target_email, amount, admin_email="System"):
-    """Transfers eyecon tokens from Admin's pool to Target's balance and logs it."""
+    """Adds eyecon tokens to Target's balance and logs it."""
     
-    # 1. Check if Admin has enough in Pool
-    admin_pool = USERS.get(admin_email, {}).get("eyecon_pool", 0)
-    
-    # If admin is "System" (e.g. initial setup), we might skip check, but here admin is a user.
-    # We assume the logged-in user (admin_email) is performing the action.
-    
-    if admin_email in USERS:
-        if admin_pool < amount:
-            return "Insufficient Pool Balance"
-        
-        # Deduct from Pool
-        USERS[admin_email]["eyecon_pool"] = admin_pool - amount
-    else:
-        # Fallback if system/unknown admin
-        pass
-
-    # 2. Add to Target
+    # 1. Add to Target
     if target_email in USERS:
         USERS[target_email]["eyecon_tokens"] = USERS[target_email].get("eyecon_tokens", 0) + amount
         save_users()
@@ -216,18 +188,13 @@ def admin_section():
     
     # --- Eyecon Pool Stats ---
     admin_email = st.session_state.get("email")
-    pool_balance = get_eyecon_pool(admin_email)
     
     # Calculate Total Issued from Logs or Current Balances
     # Let's use current balances for "Active Issued"
     total_active_issued = sum(u.get("eyecon_tokens", 0) for u in USERS.values())
     
     st.markdown("### 🏦 Eyecon Token Stats")
-    col_stat1, col_stat2 = st.columns(2)
-    with col_stat1:
-        st.metric("🎱 Admin Pool (Remaining)", pool_balance)
-    with col_stat2:
-        st.metric("📤 Total Active Issued", total_active_issued)
+    st.metric("📤 Total Active Issued", total_active_issued)
     st.write("---")
 
     st.subheader("Manage Users and Permissions")
@@ -263,8 +230,6 @@ def admin_section():
                 if result == "Success":
                     st.success(f"Successfully issued {e_tokens_to_add} Eyecon tokens to {e_user_to_issue}")
                     st.rerun()
-                elif result == "Insufficient Pool Balance":
-                    st.error(f"❌ Insufficient Pool Balance! You have {pool_balance}, trying to issue {e_tokens_to_add}.")
                 else:
                     st.error("Failed to add Eyecon tokens.")
 
