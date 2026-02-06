@@ -73,7 +73,7 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     else:
         df = pd.read_excel(file_path)
     
-    # Preserve original columns for the full data export
+    # Preserve original columns and indices for the full data export
     original_df = df.copy()
     
     df.columns = [str(c).strip() for c in df.columns]
@@ -103,6 +103,7 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     if has_b_col:
         df['B_NORM'] = df[col_map['B_NUM']].apply(normalize_geo_number)
     
+    # Identify numbers active in the window
     df_with_normalized = df.dropna(subset=['A_NORM'])
     
     def get_time_obj(t_input):
@@ -121,29 +122,31 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     window_mask = (df_with_normalized['parsed_dt'].dt.time >= s_time) & (df_with_normalized['parsed_dt'].dt.time <= e_time)
     
     temp_window_df = df_with_normalized[window_mask]
+    
+    # Important: Only use records from the window for the "Full Data" export
+    # But keep all original columns from the source file
+    full_matched_df = original_df.loc[temp_window_df.index].copy()
+
     if has_b_col and include_b:
-        temp_window_df = temp_window_df.dropna(subset=['B_NORM'])
-        window_df = temp_window_df.drop_duplicates(subset=['A_NORM', 'B_NORM'])
+        # If Include B is on, we filter the window to only valid A-B pairs
+        valid_pairs_window = temp_window_df.dropna(subset=['B_NORM'])
+        window_df = valid_pairs_window.drop_duplicates(subset=['A_NORM', 'B_NORM'])
     else:
         window_df = temp_window_df.drop_duplicates(subset=['A_NORM'])
     
     if window_df.empty:
-        return None, None, "No valid 10-digit records found in the selected time range."
+        return None, None, f"No valid 10-digit records found between {start_time_str} and {end_time_str}."
 
     results = []
-    # This will store all original rows for matched numbers
-    all_matched_indices = set()
 
     for _, row_win in window_df.iterrows():
         a_num = row_win['A_NORM']
         
+        # We still calculate 24-hour summary movement (A First/Last)
         a_mask = (df_with_normalized['A_NORM'] == a_num) | (df_with_normalized['B_NORM'] == a_num) if has_b_col else (df_with_normalized['A_NORM'] == a_num)
         a_hist = df_with_normalized[a_mask]
         
         if not a_hist.empty:
-            # Track indices for full data export
-            all_matched_indices.update(a_hist.index.tolist())
-            
             a_f = a_hist.iloc[0]
             a_l = a_hist.iloc[-1]
             
@@ -161,7 +164,6 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
                 b_hist = df_with_normalized[b_mask]
                 
                 if not b_hist.empty:
-                    all_matched_indices.update(b_hist.index.tolist())
                     b_f = b_hist.iloc[0]
                     b_l = b_hist.iloc[-1]
                     row_data.update({
@@ -174,18 +176,13 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
 
             results.append(row_data)
     
-    # 1. Summarized Movement DF
     res_df = pd.DataFrame(results)
     if not res_df.empty:
         res_df = res_df.sort_values(by='A First Time')
     
-    # 2. Full Data DF (preserving original headers and columns)
-    full_matched_df = original_df.loc[list(all_matched_indices)]
-    # Sort full data by time if possible
+    # Sort the Full Data Sheet chronologically by the original time column
     if col_map['STR_TM'] in full_matched_df.columns:
-        # Create temp column for sorting to avoid messing up original data
-        temp_dt = full_matched_df[col_map['STR_TM']].apply(parse_datetime)
-        full_matched_df['temp_sort_dt'] = temp_dt
-        full_matched_df = full_matched_df.sort_values(by='temp_sort_dt').drop(columns=['temp_sort_dt'])
+        full_matched_df['temp_dt'] = full_matched_df[col_map['STR_TM']].apply(parse_datetime)
+        full_matched_df = full_matched_df.sort_values(by='temp_dt').drop(columns=['temp_dt'])
 
     return res_df, full_matched_df, None
