@@ -18,21 +18,19 @@ def normalize_geo_number(num):
     if len(num) == 10 and num.startswith("3"):
         return num
     
-    return None # Remove if not exactly 10 digits
+    return None # Return None for invalid/short numbers
 
 def parse_datetime(dt_val):
     """Robustly parse date and time including Excel serial numbers."""
     if pd.isna(dt_val):
         return None
     
-    # Handle Excel Serial Numbers (e.g., 45979.0014)
     if isinstance(dt_val, (int, float)):
         try:
             return pd.to_datetime(dt_val, unit='D', origin='1899-12-30')
         except:
             pass
 
-    # If already a datetime-like object
     if isinstance(dt_val, (datetime, pd.Timestamp)):
         return dt_val
 
@@ -40,14 +38,12 @@ def parse_datetime(dt_val):
     if not dt_str or dt_str.lower() == "nan":
         return None
     
-    # Check if string is actually a numeric serial number
     if dt_str.replace('.','',1).isdigit():
         try:
             return pd.to_datetime(float(dt_str), unit='D', origin='1899-12-30')
         except:
             pass
 
-    # Try specific formats
     formats = [
         "%m/%d/%Y %I:%M:%S %p", 
         "%d/%m/%Y %I:%M:%S %p",
@@ -77,7 +73,6 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     else:
         df = pd.read_excel(file_path)
     
-    # Standardize column names
     df.columns = [str(c).strip() for c in df.columns]
 
     aliases = {
@@ -94,20 +89,18 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
                 break
     
     if 'A_NUM' not in col_map or 'STR_TM' not in col_map:
-        raise ValueError(f"Required columns not found. Please ensure your file has 'Number' and 'Time' columns. Columns found: {list(df.columns)}")
+        raise ValueError("Required columns (A-Party and Time) not found.")
     
-    # Process the single combined column
     df['parsed_dt'] = df[col_map['STR_TM']].apply(parse_datetime)
     df = df.dropna(subset=['parsed_dt'])
     
-    # Apply strict 10-digit normalization
     df['A_NORM'] = df[col_map['A_NUM']].apply(normalize_geo_number)
     
     has_b_col = 'B_NUM' in col_map
     if has_b_col:
         df['B_NORM'] = df[col_map['B_NUM']].apply(normalize_geo_number)
     
-    # Remove records where A Number is not valid (not 10 digits)
+    # Drop rows where A is invalid
     df = df.dropna(subset=['A_NORM'])
     
     df = df.sort_values(by='parsed_dt', ascending=True)
@@ -127,13 +120,16 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
 
     window_mask = (df['parsed_dt'].dt.time >= s_time) & (df['parsed_dt'].dt.time <= e_time)
     
+    # Pre-filter window_df to remove rows with invalid B if include_b is True
+    temp_window_df = df[window_mask]
     if has_b_col and include_b:
-        window_df = df[window_mask].drop_duplicates(subset=['A_NORM', 'B_NORM'])
+        temp_window_df = temp_window_df.dropna(subset=['B_NORM'])
+        window_df = temp_window_df.drop_duplicates(subset=['A_NORM', 'B_NORM'])
     else:
-        window_df = df[window_mask].drop_duplicates(subset=['A_NORM'])
+        window_df = temp_window_df.drop_duplicates(subset=['A_NORM'])
     
     if window_df.empty:
-        return None, f"No records found between {start_time_str} and {end_time_str} with valid 10-digit numbers."
+        return None, "No valid 10-digit records found in the selected time range."
 
     results = []
 
@@ -157,25 +153,23 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
             
             if has_b_col and include_b:
                 b_num = row_win['B_NORM']
-                if b_num: # Only if valid 10-digit
-                    b_hist = df[(df['A_NORM'] == b_num) | (df['B_NORM'] == b_num)]
-                    if not b_hist.empty:
-                        b_f = b_hist.iloc[0]
-                        b_l = b_hist.iloc[-1]
-                        row_data.update({
-                            'B Number': b_num,
-                            'B Date': b_f['parsed_dt'].strftime('%d/%m/%Y'),
-                            'B First Time': b_f['parsed_dt'].strftime('%I:%M:%S %p'),
-                            'B Last Time': b_l['parsed_dt'].strftime('%I:%M:%S %p'),
-                            'B Count': len(b_hist)
-                        })
-                else:
-                    row_data.update({ 'B Number': 'Invalid/Short', 'B Date': '', 'B First Time': '', 'B Last Time': '', 'B Count': 0 })
+                # If we are here, b_num is already guaranteed to be a valid 10-digit from the pre-filter
+                b_hist = df[(df['A_NORM'] == b_num) | (df['B_NORM'] == b_num)]
+                if not b_hist.empty:
+                    b_f = b_hist.iloc[0]
+                    b_l = b_hist.iloc[-1]
+                    row_data.update({
+                        'B Number': b_num,
+                        'B Date': b_f['parsed_dt'].strftime('%d/%m/%Y'),
+                        'B First Time': b_f['parsed_dt'].strftime('%I:%M:%S %p'),
+                        'B Last Time': b_l['parsed_dt'].strftime('%I:%M:%S %p'),
+                        'B Count': len(b_hist)
+                    })
 
             results.append(row_data)
     
     res_df = pd.DataFrame(results)
     if not res_df.empty:
-        res_df = res_df.sort_values(by='A Number')
+        res_df = res_df.sort_values(by='A First Time')
     
     return res_df, None
