@@ -18,7 +18,7 @@ def normalize_geo_number(num):
     if len(num) == 10 and num.startswith("3"):
         return num
     
-    return None # Return None for invalid/short numbers
+    return None 
 
 def parse_datetime(dt_val):
     """Robustly parse date and time including Excel serial numbers."""
@@ -73,6 +73,9 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     else:
         df = pd.read_excel(file_path)
     
+    # Preserve original columns for the full data export
+    original_df = df.copy()
+    
     df.columns = [str(c).strip() for c in df.columns]
 
     aliases = {
@@ -100,10 +103,7 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     if has_b_col:
         df['B_NORM'] = df[col_map['B_NUM']].apply(normalize_geo_number)
     
-    # Drop rows where A is invalid
-    df = df.dropna(subset=['A_NORM'])
-    
-    df = df.sort_values(by='parsed_dt', ascending=True)
+    df_with_normalized = df.dropna(subset=['A_NORM'])
     
     def get_time_obj(t_input):
         if hasattr(t_input, 'hour'): return t_input
@@ -118,10 +118,9 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     s_time = get_time_obj(start_time_str)
     e_time = get_time_obj(end_time_str)
 
-    window_mask = (df['parsed_dt'].dt.time >= s_time) & (df['parsed_dt'].dt.time <= e_time)
+    window_mask = (df_with_normalized['parsed_dt'].dt.time >= s_time) & (df_with_normalized['parsed_dt'].dt.time <= e_time)
     
-    # Pre-filter window_df to remove rows with invalid B if include_b is True
-    temp_window_df = df[window_mask]
+    temp_window_df = df_with_normalized[window_mask]
     if has_b_col and include_b:
         temp_window_df = temp_window_df.dropna(subset=['B_NORM'])
         window_df = temp_window_df.drop_duplicates(subset=['A_NORM', 'B_NORM'])
@@ -129,17 +128,22 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
         window_df = temp_window_df.drop_duplicates(subset=['A_NORM'])
     
     if window_df.empty:
-        return None, "No valid 10-digit records found in the selected time range."
+        return None, None, "No valid 10-digit records found in the selected time range."
 
     results = []
+    # This will store all original rows for matched numbers
+    all_matched_indices = set()
 
     for _, row_win in window_df.iterrows():
         a_num = row_win['A_NORM']
         
-        a_mask = (df['A_NORM'] == a_num) | (df['B_NORM'] == a_num) if has_b_col else (df['A_NORM'] == a_num)
-        a_hist = df[a_mask]
+        a_mask = (df_with_normalized['A_NORM'] == a_num) | (df_with_normalized['B_NORM'] == a_num) if has_b_col else (df_with_normalized['A_NORM'] == a_num)
+        a_hist = df_with_normalized[a_mask]
         
         if not a_hist.empty:
+            # Track indices for full data export
+            all_matched_indices.update(a_hist.index.tolist())
+            
             a_f = a_hist.iloc[0]
             a_l = a_hist.iloc[-1]
             
@@ -153,9 +157,11 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
             
             if has_b_col and include_b:
                 b_num = row_win['B_NORM']
-                # If we are here, b_num is already guaranteed to be a valid 10-digit from the pre-filter
-                b_hist = df[(df['A_NORM'] == b_num) | (df['B_NORM'] == b_num)]
+                b_mask = (df_with_normalized['A_NORM'] == b_num) | (df_with_normalized['B_NORM'] == b_num)
+                b_hist = df_with_normalized[b_mask]
+                
                 if not b_hist.empty:
+                    all_matched_indices.update(b_hist.index.tolist())
                     b_f = b_hist.iloc[0]
                     b_l = b_hist.iloc[-1]
                     row_data.update({
@@ -168,8 +174,18 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
 
             results.append(row_data)
     
+    # 1. Summarized Movement DF
     res_df = pd.DataFrame(results)
     if not res_df.empty:
         res_df = res_df.sort_values(by='A First Time')
     
-    return res_df, None
+    # 2. Full Data DF (preserving original headers and columns)
+    full_matched_df = original_df.loc[list(all_matched_indices)]
+    # Sort full data by time if possible
+    if col_map['STR_TM'] in full_matched_df.columns:
+        # Create temp column for sorting to avoid messing up original data
+        temp_dt = full_matched_df[col_map['STR_TM']].apply(parse_datetime)
+        full_matched_df['temp_sort_dt'] = temp_dt
+        full_matched_df = full_matched_df.sort_values(by='temp_sort_dt').drop(columns=['temp_sort_dt'])
+
+    return res_df, full_matched_df, None

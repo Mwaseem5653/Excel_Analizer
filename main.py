@@ -845,28 +845,44 @@ def handle_geo_fencing():
             
         try:
             with st.spinner("Analyzing Movement..."):
-                results_df, error = analyze_geo_fencing_data(temp_path, start_time, end_time, include_b=include_b)
+                results_df, full_df, error = analyze_geo_fencing_data(temp_path, start_time, end_time, include_b=include_b)
                 
             if error:
                 st.warning(error)
             elif results_df is not None:
-                st.success(f"Analysis Complete! Found {len(results_df)} unique numbers.")
+                st.success(f"Analysis Complete! Found {len(results_df)} unique records.")
                 
-                # Display
+                # Display Summary
+                st.subheader("📋 Movement Summary")
                 st.dataframe(results_df, use_container_width=True)
                 
-                # Download
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                    results_df.to_excel(writer, index=False, sheet_name='Geo_Fencing_Movement')
-                excel_buffer.seek(0)
+                col_d1, col_d2 = st.columns(2)
                 
-                st.download_button(
-                    label="📥 Download Movement Report (Excel)",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"geo_fencing_{uploaded_file.name.split('.')[0]}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                with col_d1:
+                    # Download Summary
+                    excel_buffer = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                        results_df.to_excel(writer, index=False, sheet_name='Movement_Summary')
+                    excel_buffer.seek(0)
+                    st.download_button(
+                        label="📥 Download Movement Summary (Excel)",
+                        data=excel_buffer.getvalue(),
+                        file_name=f"summary_{uploaded_file.name.split('.')[0]}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                
+                with col_d2:
+                    # Download Full Matching Data
+                    full_excel_buffer = io.BytesIO()
+                    with pd.ExcelWriter(full_excel_buffer, engine='xlsxwriter') as writer:
+                        full_df.to_excel(writer, index=False, sheet_name='Full_Matched_Records')
+                    full_excel_buffer.seek(0)
+                    st.download_button(
+                        label="📥 Download Full Matched Records (Excel)",
+                        data=full_excel_buffer.getvalue(),
+                        file_name=f"full_data_{uploaded_file.name.split('.')[0]}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
         except Exception as e:
             st.error(f"❌ Analysis Error: {str(e)}")
         finally:
