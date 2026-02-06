@@ -3,18 +3,22 @@ import re
 from datetime import datetime
 
 def normalize_geo_number(num):
-    """Normalize phone number to 10 digits starting with 3 (e.g., 3001234567)."""
+    """Normalize phone number to exactly 10 digits starting with 3 (e.g., 3032183846)."""
     if pd.isna(num) or num == "":
         return None
     num = str(num).strip().replace(".0", "")
     num = re.sub(r'\D', '', num)
+    
     if num.startswith("92"):
         num = num[2:]
-    if num.startswith("0"):
+    elif num.startswith("0"):
         num = num[1:]
+    
+    # Strictly enforce 10 digits starting with 3
     if len(num) == 10 and num.startswith("3"):
         return num
-    return num 
+    
+    return None # Remove if not exactly 10 digits
 
 def parse_datetime(dt_val):
     """Robustly parse date and time including Excel serial numbers."""
@@ -76,7 +80,6 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     # Standardize column names
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Keeping your updated aliases exactly as they were
     aliases = {
         'A_NUM': ['DLD_NO', 'MSISDN', 'A-Party', 'A_NUMBER', 'ORIGINATING_NUM', 'DLD NO', 'PHONE', 'NUMBER', 'MSISDN_A'],
         'B_NUM': ['DLG_NO', 'B-Party', 'RECEIVER', 'B_NUMBER', 'TERMINATING_NUM', 'DLG NO', 'MSISDN_B'],
@@ -97,11 +100,15 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     df['parsed_dt'] = df[col_map['STR_TM']].apply(parse_datetime)
     df = df.dropna(subset=['parsed_dt'])
     
+    # Apply strict 10-digit normalization
     df['A_NORM'] = df[col_map['A_NUM']].apply(normalize_geo_number)
     
     has_b_col = 'B_NUM' in col_map
     if has_b_col:
         df['B_NORM'] = df[col_map['B_NUM']].apply(normalize_geo_number)
+    
+    # Remove records where A Number is not valid (not 10 digits)
+    df = df.dropna(subset=['A_NORM'])
     
     df = df.sort_values(by='parsed_dt', ascending=True)
     
@@ -118,7 +125,6 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     s_time = get_time_obj(start_time_str)
     e_time = get_time_obj(end_time_str)
 
-    # Filter based on time of day
     window_mask = (df['parsed_dt'].dt.time >= s_time) & (df['parsed_dt'].dt.time <= e_time)
     
     if has_b_col and include_b:
@@ -127,7 +133,7 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
         window_df = df[window_mask].drop_duplicates(subset=['A_NORM'])
     
     if window_df.empty:
-        return None, f"No records found between {start_time_str} and {end_time_str}."
+        return None, f"No records found between {start_time_str} and {end_time_str} with valid 10-digit numbers."
 
     results = []
 
@@ -151,7 +157,7 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
             
             if has_b_col and include_b:
                 b_num = row_win['B_NORM']
-                if pd.notna(b_num) and b_num != "":
+                if b_num: # Only if valid 10-digit
                     b_hist = df[(df['A_NORM'] == b_num) | (df['B_NORM'] == b_num)]
                     if not b_hist.empty:
                         b_f = b_hist.iloc[0]
@@ -164,12 +170,12 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
                             'B Count': len(b_hist)
                         })
                 else:
-                    row_data.update({ 'B Number': 'None', 'B Date': '', 'B First Time': '', 'B Last Time': '', 'B Count': 0 })
+                    row_data.update({ 'B Number': 'Invalid/Short', 'B Date': '', 'B First Time': '', 'B Last Time': '', 'B Count': 0 })
 
             results.append(row_data)
     
     res_df = pd.DataFrame(results)
     if not res_df.empty:
-        res_df = res_df.sort_values(by='A First Time')
+        res_df = res_df.sort_values(by='A Number')
     
     return res_df, None
