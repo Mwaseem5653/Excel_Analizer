@@ -6,12 +6,14 @@
             "Excel Analyzer",
             "PTA Services",
             "CDR Format",
+            "Vehicle and Mobile",
+            "Geo Fencing",
             "Admin",
-            "Vehicle and Mobile"
+            "Settings / Future Tools"
         ],
-        "tokens": 183,
-        "eyecon_tokens": 100,
-        "eyecon_consumed": 0
+        "tokens": 168,
+        "eyecon_tokens": 89,
+        "eyecon_consumed": 11
     },
     "dicbranch": {
         "password": "dicbranch",
@@ -32,6 +34,7 @@
             "Excel Analyzer",
             "PTA Services",
             "CDR Format",
+            "Geo Fencing",
             "Admin",
             "Vehicle and Mobile"
         ],
@@ -70,6 +73,7 @@
             "Application Extractor",
             "PTA Services",
             "Excel Analyzer",
+            "Geo Fencing",
             "Eyecon Info",
             "CDR Format"
         ],

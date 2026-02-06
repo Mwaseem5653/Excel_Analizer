@@ -817,6 +817,63 @@ def show_main_app():
                 if data.get("error"): st.error(data["error"])
                 else: st.table(pd.DataFrame({"Attribute": list(data.keys()), "Value": list(data.values())}))
 
+def handle_geo_fencing():
+    from utils.geo_analyzer import analyze_geo_fencing_data
+    import io
+    import pandas as pd
+
+    st.title("🗺️ Geo Fencing - CDR Movement Analyzer")
+    st.info("Upload CDR Excel/CSV to find first and last locations of numbers within a time range.")
+    
+    # --- Time Range Input ---
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        start_time = st.text_input("Start Time (e.g. 01:00 AM)", value="12:00 AM")
+    with col_t2:
+        end_time = st.text_input("End Time (e.g. 11:59 PM)", value="11:59 PM")
+    
+    include_b = st.checkbox("Include B Number Movement Analysis", value=True)
+    
+    uploaded_file = st.file_uploader("Upload CDR File", type=["xlsx", "csv"])
+    
+    if uploaded_file:
+        # Save temp
+        os.makedirs("temp_uploads", exist_ok=True)
+        temp_path = os.path.join("temp_uploads", uploaded_file.name)
+        with open(temp_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+            
+        try:
+            with st.spinner("Analyzing Movement..."):
+                results_df, error = analyze_geo_fencing_data(temp_path, start_time, end_time, include_b=include_b)
+                
+            if error:
+                st.warning(error)
+            elif results_df is not None:
+                st.success(f"Analysis Complete! Found {len(results_df)} unique numbers.")
+                
+                # Display
+                st.dataframe(results_df, use_container_width=True)
+                
+                # Download
+                excel_buffer = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                    results_df.to_excel(writer, index=False, sheet_name='Geo_Fencing_Movement')
+                excel_buffer.seek(0)
+                
+                st.download_button(
+                    label="📥 Download Movement Report (Excel)",
+                    data=excel_buffer.getvalue(),
+                    file_name=f"geo_fencing_{uploaded_file.name.split('.')[0]}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        except Exception as e:
+            st.error(f"❌ Analysis Error: {str(e)}")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+
 # ---------- Main App ----------
 def main():
     if not auth.is_logged_in():
@@ -828,7 +885,9 @@ def main():
     service_map = {
         "Application Extractor": "app", "Excel Analyzer": "analyzer",
         "PTA Services": "pta_services", "CDR Format": "cdr_format",
-        "Vehicle and Mobile": "vehicle_and_mobile", "Admin": "admin",
+        "Vehicle and Mobile": "vehicle_and_mobile", 
+        "Geo Fencing": "geo_fencing",
+        "Admin": "admin",
         "Settings / Future Tools": "settings"
     }
     
@@ -857,8 +916,15 @@ def main():
             st.metric("👁️ Eyecon", auth.get_eyecon_tokens())
         
         # Sidebar buttons only for allowed services
-        for service in user_services:
-            if service in service_map:
+        # Define the desired order of services
+        desired_order = [
+            "Application Extractor", "Excel Analyzer", "PTA Services", 
+            "CDR Format", "Vehicle and Mobile", "Geo Fencing", 
+            "Admin", "Settings / Future Tools"
+        ]
+        
+        for service in desired_order:
+            if service in user_services:
                 if st.button(service):
                     st.session_state.page = service_map[service]
         
@@ -871,6 +937,7 @@ def main():
     elif page == "pta_services": handle_pta_services()
     elif page == "cdr_format": handle_cdr_format()
     elif page == "vehicle_and_mobile": show_main_app()
+    elif page == "geo_fencing": handle_geo_fencing()
     elif page == "admin": auth.admin_section()
     elif page == "settings":
         st.title("Settings / Tools")

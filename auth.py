@@ -20,8 +20,10 @@ def load_users():
                     "Excel Analyzer",
                     "PTA Services",
                     "CDR Format",
+                    "Vehicle and Mobile",
+                    "Geo Fencing",
                     "Admin",
-                    "Vehicle and Mobile"
+                    "Settings / Future Tools"
                 ]
             },
             
@@ -103,6 +105,8 @@ def is_logged_in():
 def get_user_services():
     """Returns the list of services for the logged-in user."""
     if is_logged_in():
+        global USERS
+        USERS = load_users()  # Force reload to get latest permissions
         email = st.session_state["email"]
         return USERS.get(email, {}).get("services", [])
     return []
@@ -307,7 +311,7 @@ def admin_section():
         
         all_services = [
             "Application Extractor", "Excel Analyzer", "PTA Services", 
-            "CDR Format", "Vehicle and Mobile", "Admin", "Settings / Future Tools",
+            "CDR Format", "Vehicle and Mobile", "Geo Fencing", "Admin", "Settings / Future Tools",
             "Eyecon Info"
         ]
         selected_services = st.multiselect("Select services for the new user", all_services)
