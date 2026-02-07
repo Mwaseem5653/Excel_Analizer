@@ -80,7 +80,7 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
 
     aliases = {
         'A_NUM': ['DLD_NO', 'MSISDN', 'A-Party', 'A_NUMBER', 'ORIGINATING_NUM', 'DLD NO', 'PHONE', 'NUMBER', 'MSISDN_A'],
-        'B_NUM': ['DLG_NO', 'B-Party', 'RECEIVER', 'B_NUMBER', 'TERMINATING_NUM', 'DLG NO', 'MSISDN_B'],
+        'B_NUM': ['DLG_NO', 'B-Party', 'CALL_ORIG_NUM', 'B_NUMBER', 'TERMINATING_NUM', 'DLG NO', 'MSISDN_B'],
         'STR_TM': ['Date And Time', 'START_TIME', 'CALL_TIME', 'DATETIME', 'STR TM', 'TIME', 'STRT_TM', 'CALL_START_DT_TM', 'DATE_TIME']
     }
     
@@ -153,8 +153,8 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
             row_data = {
                 'A Number': a_num,
                 'A Date': a_f['parsed_dt'].strftime('%d/%m/%Y'),
-                'A First Time': a_f['parsed_dt'].strftime('%I:%M:%S %p'),
-                'A Last Time': a_l['parsed_dt'].strftime('%I:%M:%S %p'),
+                'A First Call': a_f['parsed_dt'].strftime('%I:%M:%S %p'),
+                'A Last Call': a_l['parsed_dt'].strftime('%I:%M:%S %p'),
                 'A Count': len(a_hist)
             }
             
@@ -169,8 +169,8 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
                     row_data.update({
                         'B Number': b_num,
                         'B Date': b_f['parsed_dt'].strftime('%d/%m/%Y'),
-                        'B First Time': b_f['parsed_dt'].strftime('%I:%M:%S %p'),
-                        'B Last Time': b_l['parsed_dt'].strftime('%I:%M:%S %p'),
+                        'B First Call': b_f['parsed_dt'].strftime('%I:%M:%S %p'),
+                        'B Last Call': b_l['parsed_dt'].strftime('%I:%M:%S %p'),
                         'B Count': len(b_hist)
                     })
 
@@ -178,7 +178,7 @@ def analyze_geo_fencing_data(file_path, start_time_str, end_time_str, include_b=
     
     res_df = pd.DataFrame(results)
     if not res_df.empty:
-        res_df = res_df.sort_values(by='A First Time')
+        res_df = res_df.sort_values(by='A First Call')
     
     # Sort the Full Data Sheet chronologically by the original time column
     if col_map['STR_TM'] in full_matched_df.columns:

@@ -856,33 +856,59 @@ def handle_geo_fencing():
                 st.subheader("📋 Movement Summary")
                 st.dataframe(results_df, use_container_width=True)
                 
-                col_d1, col_d2 = st.columns(2)
-                
-                with col_d1:
-                    # Download Summary
-                    excel_buffer = io.BytesIO()
-                    with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                        results_df.to_excel(writer, index=False, sheet_name='Movement_Summary')
-                    excel_buffer.seek(0)
-                    st.download_button(
-                        label="📥 Download Movement Summary (Excel)",
-                        data=excel_buffer.getvalue(),
-                        file_name=f"summary_{uploaded_file.name.split('.')[0]}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                
-                with col_d2:
-                    # Download Full Matching Data
-                    full_excel_buffer = io.BytesIO()
-                    with pd.ExcelWriter(full_excel_buffer, engine='xlsxwriter') as writer:
-                        full_df.to_excel(writer, index=False, sheet_name='Full_Matched_Records')
-                    full_excel_buffer.seek(0)
-                    st.download_button(
-                        label="📥 Download Full Matched Records (Excel)",
-                        data=full_excel_buffer.getvalue(),
-                        file_name=f"full_data_{uploaded_file.name.split('.')[0]}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                # Combined Download Button
+                st.subheader("📥 Download Analysis Results")
+                full_excel_buffer = io.BytesIO()
+                # Prepend space to all columns to prevent scientific notation/auto-formatting
+                # We use applymap to ensure every single cell is treated as a string with a leading space
+                full_df_formatted = full_df.astype(str).applymap(lambda x: f" {x}" if x.strip().lower() not in ["nan", "none", ""] else "")
+                results_df_formatted = results_df.astype(str).applymap(lambda x: f" {x}" if x.strip().lower() not in ["nan", "none", ""] else "")
+
+                with pd.ExcelWriter(full_excel_buffer, engine="xlsxwriter") as writer:
+                    # Write Full Matched Records
+                    full_df_formatted.to_excel(writer, index=False, sheet_name="Geo_Fencing_Results")
+                    
+                    workbook = writer.book
+                    worksheet = writer.sheets["Geo_Fencing_Results"]
+                    
+                    # Define header format: Light Blue background, Bold, Border
+                    header_format = workbook.add_format({
+                        "bold": True,
+                        "bg_color": "#ADD8E6",  # Light Blue
+                        "border": 1,
+                        "align": "center",
+                        "valign": "vcenter"
+                    })
+
+                    # Apply formatting to main headers
+                    for col_num, value in enumerate(full_df.columns.values):
+                        worksheet.write(0, col_num, value, header_format)
+                        # Set column width based on header length
+                        column_len = len(str(value)) + 5
+                        worksheet.set_column(col_num, col_num, column_len)
+                    
+                    # Start summary in the next column (No extra gap)
+                    start_col = len(full_df.columns)
+                    
+                    # Write the Movement Summary side-by-side
+                    results_df_formatted.to_excel(writer, index=False, sheet_name="Geo_Fencing_Results", startrow=0, startcol=start_col)
+                    
+                    # Apply formatting to summary headers
+                    for col_num, value in enumerate(results_df.columns.values):
+                        current_col = start_col + col_num
+                        worksheet.write(0, current_col, value, header_format)
+                        # Set column width for summary
+                        column_len = len(str(value)) + 5
+                        worksheet.set_column(current_col, current_col, column_len)
+                    
+                full_excel_buffer.seek(0)
+                st.download_button(
+                    label="📥 Download Full Report (Formatted Excel)",
+                    data=full_excel_buffer.getvalue(),
+                    file_name=f"Geo_Fencing_Report_{uploaded_file.name.split('.')[0]}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
         except Exception as e:
             st.error(f"❌ Analysis Error: {str(e)}")
         finally:
