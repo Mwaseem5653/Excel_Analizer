@@ -5,6 +5,7 @@ import time
 import auth
 import shutil
 import uuid
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -859,10 +860,46 @@ def handle_geo_fencing():
                 # Combined Download Button
                 st.subheader("📥 Download Analysis Results")
                 full_excel_buffer = io.BytesIO()
-                # Prepend space to all columns to prevent scientific notation/auto-formatting
-                # We use applymap to ensure every single cell is treated as a string with a leading space
-                full_df_formatted = full_df.astype(str).applymap(lambda x: f" {x}" if x.strip().lower() not in ["nan", "none", ""] else "")
-                results_df_formatted = results_df.astype(str).applymap(lambda x: f" {x}" if x.strip().lower() not in ["nan", "none", ""] else "")
+                # Prepend space and standardize date formats
+                def format_cell(x):
+                    if pd.isna(x): return ""
+                    
+                    # 1. If it's already a datetime/timestamp object
+                    if isinstance(x, (pd.Timestamp, datetime)):
+                        return " " + x.strftime("%m/%d/%Y %I:%M:%S %p")
+                    
+                    s = str(x).strip()
+                    if s.lower() in ["nan", "none", ""]: return ""
+                    
+                    # 2. Try to parse numeric Excel dates (e.g., 45979.000138)
+                    try:
+                        # Check if it looks like an Excel serial number
+                        # (Usually has a decimal for time, and is between 25569 and 100000)
+                        if s.replace(".","",1).isdigit():
+                            val = float(s)
+                            if 25569 < val < 100000:
+                                dt = pd.to_datetime(val, unit="D", origin="1899-12-30")
+                                return " " + dt.strftime("%m/%d/%Y %I:%M:%S %p")
+                    except: pass
+                    
+                    # 3. Try to parse date-like strings
+                    try:
+                        if any(c in s for c in ["/", "-", ":"]) and len(s) >= 8:
+                            # Use pandas to parse, then format as string
+                            dt = pd.to_datetime(s, errors="coerce")
+                            if not pd.isna(dt):
+                                return " " + dt.strftime("%m/%d/%Y %I:%M:%S %p")
+                    except: pass
+                    
+                    # 4. For everything else, return as a string with a leading space
+                    return f" {s}"
+
+                # Format the Full Data table with standardized dates and leading spaces
+                full_df_formatted = full_df.astype(object).applymap(format_cell)
+                
+                # For the Summary table, only add a leading space and don't touch the date/count values
+                # This ensures the summary remains "unaffected" by the complex formatting
+                results_df_formatted = results_df.astype(str).applymap(lambda x: f" {x}" if str(x).strip().lower() not in ["nan", "none", ""] else "")
 
                 with pd.ExcelWriter(full_excel_buffer, engine="xlsxwriter") as writer:
                     # Write Full Matched Records
